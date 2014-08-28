@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<!--!DOCTYPE document SYSTEM "setup.dtd"-->
+
+<setup version="1.0">
+
+
+    <chip chipfile="chipfiles/mn256r1_retina_monster.nhml" id="mn256r1" slot="0">      
+        <configurator module='pyMonster'>
+            <parameter name='bias_folder'>biases</parameter>
+            <parameter name='host'>localhost</parameter>
+            <parameter name='port'>50019</parameter>
+        </configurator>  
+    </chip>
+
+    <defaultchip chipfile="chipfiles/mn256r1_retina_monster.nhml" />
+
+    <communicator module='pyAex.api.com_aextcpclient'> 
+        <parameter name='host'>localhost</parameter>
+        <parameter name='fps'>25</parameter>
+    </communicator>
+    
+    <mapper module='pyMonster'> 
+    </mapper>
+
+
+</setup>
+
+
+
+
+
+
+
+	
