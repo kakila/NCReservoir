@@ -1,8 +1,29 @@
+'''
+ Copyright (C) 2014 - Federico Corradi
+ Copyright (C) 2014 - Juan Pablo Carbajal
+ 
+ This progrm is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 3 of the License, or
+ (at your option) any later version.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with this program. If not, see <http://www.gnu.org/licenses/>.
+'''
+
+
 ############### author ##########
 # federico corradi
 # federico@ini.phys.ethz.ch
+# Juan Pablo Carbajal 
+# ajuanpi+dev@gmail.com
+#
 # Liquid State Machine class mn256r1 
-# GPL licence
 # ===============================
 
 ### ========================= import packages ===============================
@@ -107,6 +128,46 @@ class Lsm:
                         self.matrix_programmable_w[post,pre] = np.random.randint(w_max)+w_min
                     else:
                         self.matrix_programmable_w[post,pre] = w[0]
+
+    def _generate_input_mean_rates (self,G, rates, nT, nx=16, ny=16):
+        '''
+        Generates a matrix the mean rates of the input neurons defined in
+        nT time intervals.
+        
+        ** Inputs **
+        G: A list with G_i(x,y), each element is a function 
+                G_i: [-1,1]x[-1,1] --> [0,1] 
+           defining the intensity of mean rates on the (-1,1)-square.
+        nx,ny: Number of neurons in the x and y direction (default 16).
+
+        rates: A list with the time variations of the input mean rates.
+               Each element is
+                f_i: [0,1] --> [0,1]
+        
+        nT: Number of time intervals.
+
+        ** Outputs **
+        '''
+        
+        nR = len(rates) # Number of rates
+        if not nR == len(G):
+            # TODO: Raise an error
+            print "Rates and G must have the same length."
+            return 
+        
+        # Square
+        x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
+        t   = np.linspace(0,1,nT,endpoint=False)
+        V   = np.array([r(t) for r in rates])
+        if nR == 1:
+            # All rates have the same spatial distribution.
+            M = G(x,y).ravel()[:,None] * np.sum (V)
+        else :
+            M = np.zeros (nx*ny, nT)
+            for g,r in zip(G,V):
+                M += np.array(g(x,y).ravel()[:,None] * r)
+        
+        return M
 
     def stimulate_reservoir(self, nsteps = 3, max_freq = 1500, min_freq = 500, duration = 1000, c=0.5, trials=5):
         '''
