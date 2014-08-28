@@ -50,10 +50,10 @@ class Lsm:
         self.rcn = population
         self.setup = population.setup
         # init reservoir 
-        #self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
+        self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
         self._init_lsm()
-        #self.program_config()
-        #self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
+        self.program_config()
+        self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
 
     ### ========================= functions ===================================
     def _init_lsm(self):
@@ -166,28 +166,53 @@ class Lsm:
 
         return M
 
-    def stimulate_reservoir(self, nsteps = 3, max_freq = 1500, min_freq = 500, duration = 1000, c=0.5, trials=5):
+    def stimulate_reservoir(self, nsteps = 3, max_freq = 1500, min_freq = 500, duration = 1000, trials=5):
         '''
         stimulate reservoir via virtual input synapses
+        nsteps -> time steps to be considered in a duration = duration
+        max_freq -> max input freq
+        min_freq -> min input freq
+        trials -> number of different stimulations with inhonogeneous poisson spike trains
         '''
         vsyn = 4
         somach = self.rcn.soma.channel
         inputch = 1
+
+        rates = []
+        for n in xrange(0,3):
+            rates.append(lambda t,w=n: 0.5+0.5*np.sin(2*np.pi*(w+1)*t))
+            # Single spatial distribution
+            #G = [lambda x,y: np.exp (-(x**2 + y**2))]   
+            # Multiple spatial distribution
+            G = []
+            x0 = [-0.5, 0, 0.5]
+            for n in xrange (0,3):
+                G.append(lambda x,y,w=n: np.exp (-((x-x0[w])**2 + y**2)))
+
+        M = liquid._generate_input_mean_rates(G, rates, nsteps) 
+        nsyn, nsteps = np.shape(M)
+
+        #we pick a random projection
         nsyn_tot = len(self.rcn.synapses['virtual_exc'].addr)
-        nsyn = int(round(nsyn_tot * c))
-        index_syn = np.random.randint(nsyn_tot,size=(nsyn))
-        index_syn = np.unique(index_syn)
-        nsyn = len(index_syn)
+        index_syn_tot = np.linspace(0,nsyn_tot-1, nsyn_tot)
+        np.random.shuffle(index_syn_tot)
+        index_syn = index_syn_tot[0:nsyn]
         tot_outputs = []
         tot_inputs = []
+        
         #stim_matrix = r_[[500*np.random.random(len(self.rcn.soma.addr)*vsyn)]*nsteps]
         #stim_matrix = r_[[np.linspace(min_freq,max_freq,len(self.rcn.soma.addr)*vsyn)]*nsteps]
-        stim_matrix = np.r_[[np.linspace(min_freq,max_freq,nsyn)]*nsteps]
+        #stim_matrix = np.r_[[np.linspace(min_freq,max_freq,nsyn)]*nsteps]
+
         timebins = np.linspace(0, duration, nsteps)
-        syn = self.rcn.synapses['virtual_exc'][index_syn]
-        
+        syn = self.rcn.synapses['virtual_exc'][index_syn.astype(int)]
+
+        #rescale M to max/min freq
+        new_value = np.ceil(( (M - np.min(M)) / (np.max(M) - np.min(M)) ) * (max_freq  - min_freq) + min_freq)
+
+        #create mean rates basis
         for this_stim in range(trials):
-            spiketrain = syn.spiketrains_inh_poisson(stim_matrix.T,timebins)
+            spiketrain = syn.spiketrains_inh_poisson(new_value,timebins)
             out = self.setup.stimulate(spiketrain, send_reset_event=False, duration=duration)
             out = out[somach]
             out.t_start = np.max(out.raw_data()[:,0])-duration
