@@ -50,10 +50,10 @@ class Lsm:
         self.rcn = population
         self.setup = population.setup
         # init reservoir 
-        self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
+        #self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
         self._init_lsm()
         self.program_config()
-        self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
+        #self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
 
     ### ========================= functions ===================================
     def _init_lsm(self):

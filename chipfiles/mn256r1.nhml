@@ -1,0 +1,159 @@
+<chip chipclass="mn256r1">
+    <addressSpecification type="aerIn">
+        <dim id="neu" type="soma">
+            <range>range(256)</range>
+            <description/>
+            <decoder>X</decoder>
+        </dim>
+        <dim id="syntype" type="synapse">
+            <range>range(520)</range>
+            <description/>
+            <decoder>Z</decoder>
+        </dim>
+        <pin id="X">
+            <decoder>neu</decoder>
+        </pin>
+        <pin id="Z">
+            <decoder>syntype</decoder>
+        </pin>
+        <pinlayout>Z13 Z12 Z11 Z10 Z9 Z8 Z7 Z6 Z5 Z4 Z3 Z2 Z1 Z0 X7 X6 X5 X4 X3 X2 X1 X0</pinlayout> 
+    </addressSpecification>
+    <addressSpecification type="aerOut">
+        <dim id="neu" type="soma">
+            <range>range(256)</range>
+            <description/>
+            <decoder>Y</decoder>
+        </dim>
+        <pin id="Y">
+            <decoder>neu</decoder>
+        </pin>
+        <!--pinlayout> Y15 Y14 Y13 Y12 Y11 Y10 Y9 Y8 Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0</pinlayout-->
+    <pinlayout>Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0</pinlayout>
+    <!--Y31 Y30 Y29 Y28 Y27 Y26 Y25 Y24 Y23 Y22 Y21 Y20 Y19 Y18 Y17 Y16 Y15 Y14 Y13 Y12 Y11 Y10 Y9-->
+</addressSpecification>
+<!--addressSpecification type="aerProgram">
+        <dim id="neu" type="soma">
+            <range>range(256)</range>
+            <description/>
+            <decoder>Y</decoder>
+        </dim>
+        <pin id="Y">
+            <decoder>neu</decoder>
+        </pin>
+        <!--pinlayout> Y15 Y14 Y13 Y12 Y11 Y10 Y9 Y8 Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0</pinlayout-->
+    <pinlayout>Y7 Y6 Y5 Y4 Y3 Y2 Y1 Y0</pinlayout>
+    <!--Y31 Y30 Y29 Y28 Y27 Y26 Y25 Y24 Y23 Y22 Y21 Y20 Y19 Y18 Y17 Y16 Y15 Y14 Y13 Y12 Y11 Y10 Y9-->
+</addressSpecification-->
+<neuron id="excitatory">
+    <soma type="SOMA" id="general">
+        <dim id="neu" range="range(256)"/>
+    </soma>
+    <synapse type="LEARNING SYNAPSES" id="learning">
+        <dim id="syntype" range="range(256)"/>
+        <!--dim id="recurrent" range="range(2)"/>
+        <dim id="state" range="range(2)"/-->
+    </synapse>
+    <!--synapse type="LEARNING BROADCAST SYNAPSES" id="learning_bc">
+        <dim id="syntype" range="range(256)"/>
+        <dim id="state" range="range(2)"/>
+    </synapse-->
+    <synapse type="PROGRAMMABLE SYNAPSES" id="programmable">
+        <dim id="syntype" range="range(256,512)"/>
+        <!--dim id="weight" range="range(4)" />
+        <dim id="recurrent" range="range(2)" /-->
+    </synapse>
+    <synapse type="VIRTUAL SYNAPSES EXC" id="virtual_exc">
+        <dim id="syntype" range="range(512,516)"/>
+    </synapse>
+    <synapse type="VIRTUAL SYNAPSES INH" id="virtual_inh">
+        <dim id="syntype" range="range(516,520)"/>
+    </synapse>
+</neuron>
+<parameters>
+    <parameter Count="0" Description="" PIN="0" FET="NBias" HighLow="HighBias" SignalName="IF_RST_N" DefaultCoarse="24u" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="1" Description="" PIN="1" FET="PBias" HighLow="HighBias" SignalName="IF_BUF_P" DefaultCoarse="24u" DefaultFine="11" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="2" Description="" PIN="2" FET="NBias" HighLow="HighBias" SignalName="IF_ATHR_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="3" Description="" PIN="3" FET="NBias" HighLow="HighBias" SignalName="IF_RFR1_N" DefaultCoarse="24u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="4" Description="" PIN="4" FET="NBias" HighLow="HighBias" SignalName="IF_RFR2_N" DefaultCoarse="6.5n" DefaultFine="128" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="5" Description="" PIN="5" FET="PBias" HighLow="HighBias" SignalName="IF_AHW_P" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="6" Description="" PIN="6" FET="NBias" HighLow="LowBias" SignalName="IF_AHTAU_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="7" Description="" PIN="7" FET="PBias" HighLow="HighBias" SignalName="IF_DC_P" DefaultCoarse="3.2u" DefaultFine="7" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="8" Description="" PIN="8" FET="NBias" HighLow="LowBias" SignalName="IF_TAU2_N" DefaultCoarse="820p" DefaultFine="20" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="9" Description="" PIN="9" FET="NBias" HighLow="LowBias" SignalName="IF_TAU1_N" DefaultCoarse="15p" DefaultFine="40" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="10" Description="" PIN="10" FET="NBias" HighLow="HighBias" SignalName="IF_NMDA_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="11" Description="" PIN="11" FET="NBias" HighLow="HighBias" SignalName="IF_CASC_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="12" Description="" PIN="12" FET="NBias" HighLow="HighBias" SignalName="IF_THR_N" DefaultCoarse="6.5n" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="13" Description="" PIN="13" FET="PBias" HighLow="HighBias" SignalName="SL_THDN_P" DefaultCoarse="0.4u" DefaultFine="131" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="14" Description="" PIN="14" FET="NBias" HighLow="HighBias" SignalName="SL_MEMTHR_N" DefaultCoarse="3.2u" DefaultFine="150" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="15" Description="" PIN="15" FET="NBias" HighLow="HighBias" SignalName="SL_BUF_N" DefaultCoarse="0.4u" DefaultFine="156" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="16" Description="" PIN="16" FET="NBias" HighLow="HighBias" SignalName="SL_THMIN_N" DefaultCoarse="6.5n" DefaultFine="1" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="17" Description="" PIN="17" FET="PBias" HighLow="HighBias" SignalName="SL_WTA_P" DefaultCoarse="0.4u" DefaultFine="73" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="18" Description="" PIN="18" FET="PBias" HighLow="HighBias" SignalName="SL_CATHR_P" DefaultCoarse="820p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="19" Description="" PIN="19" FET="PBias" HighLow="HighBias" SignalName="SL_THUP_P" DefaultCoarse="0.4u" DefaultFine="131" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="20" Description="" PIN="20" FET="PBias" HighLow="HighBias" SignalName="SL_CATAU_P" DefaultCoarse="105p" DefaultFine="15" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="21" Description="" PIN="21" FET="NBias" HighLow="HighBias" SignalName="SL_CAW_N" DefaultCoarse="24u" DefaultFine="92" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="22" Description="" PIN="22" FET="PBias" HighLow="HighBias" SignalName="FB_REF_P" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="23" Description="" PIN="23" FET="NBias" HighLow="HighBias" SignalName="FB_WTA_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="24" Description="" PIN="24" FET="PBias" HighLow="HighBias" SignalName="FB_BUF_P" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="25" Description="" PIN="25" FET="NBias" HighLow="HighBias" SignalName="FB_CASC_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="26" Description="" PIN="26" FET="NBias" HighLow="HighBias" SignalName="FB_INVERSE_TAIL_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="27" Description="" PIN="27" FET="NBias" HighLow="HighBias" SignalName="FB_INVERSE_REF_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="28" Description="" PIN="28" FET="PBias" HighLow="HighBias" SignalName="VA_INH_P" DefaultCoarse="24u" DefaultFine="72" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="29" Description="" PIN="29" FET="PBias" HighLow="HighBias" SignalName="VDPII_TAU_N" DefaultCoarse="105p" DefaultFine="200" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="30" Description="" PIN="30" FET="NBias" HighLow="HighBias" SignalName="VDPII_THR_N" DefaultCoarse="105p" DefaultFine="200" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="31" Description="" PIN="31" FET="NBias" HighLow="HighBias" SignalName="VA_EXC_N" DefaultCoarse="24u" DefaultFine="200" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="32" Description="" PIN="32" FET="PBias" HighLow="HighBias" SignalName="VDPIE_TAU_P" DefaultCoarse="105p" DefaultFine="200" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="33" Description="" PIN="33" FET="PBias" HighLow="HighBias" SignalName="VDPIE_THR_P" DefaultCoarse="105p" DefaultFine="200" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="34" Description="" PIN="34" FET="NBias" HighLow="HighBias" SignalName="PA_WDRIFTDN_N" DefaultCoarse="105p" DefaultFine="100" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="35" Description="" PIN="35" FET="PBias" HighLow="HighBias" SignalName="PA_WDRIFTUP_P" DefaultCoarse="105p" DefaultFine="77" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="36" Description="" PIN="36" FET="PBias" HighLow="HighBias" SignalName="PA_DELTAUP_P" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="37" Description="" PIN="37" FET="NBias" HighLow="HighBias" SignalName="PA_DELTADN_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="38" Description="" PIN="38" FET="NBias" HighLow="HighBias" SignalName="PA_WHIDN_N" DefaultCoarse="24u" DefaultFine="47" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="39" Description="" PIN="39" FET="NBias" HighLow="HighBias" SignalName="PA_WTHR_P" DefaultCoarse="24u" DefaultFine="10" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="40" Description="" PIN="40" FET="PBias" HighLow="HighBias" SignalName="PA_WDRIFT_P" DefaultCoarse="105p" DefaultFine="99" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="41" Description="" PIN="41" FET="PBias" HighLow="HighBias" SignalName="PA_PWLK_P" DefaultCoarse="50n" DefaultFine="53" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="42" Description="" PIN="42" FET="NBias" HighLow="HighBias" SignalName="PDPI_BUF_N" DefaultCoarse="0.4u" DefaultFine="64" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="43" Description="" PIN="43" FET="PBias" HighLow="HighBias" SignalName="PDPI_VMONPU_P" DefaultCoarse="6.5n" DefaultFine="42" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="44" Description="" PIN="44" FET="PBias" HighLow="HighBias" SignalName="PDPI_TAU_P" DefaultCoarse="105p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="45" Description="" PIN="45" FET="PBias" HighLow="HighBias" SignalName="PDPI_THR_P" DefaultCoarse="105p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="46" Description="" PIN="46" FET="NBias" HighLow="HighBias" SignalName="NPA_WEIGHT_STD_N" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="47" Description="" PIN="47" FET="NBias" HighLow="HighBias" SignalName="NPA_WEIGHT_INH0_N" DefaultCoarse="24u" DefaultFine="201" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="48" Description="" PIN="48" FET="PBias" HighLow="HighBias" SignalName="NPA_PWLK_P" DefaultCoarse="50n" DefaultFine="52" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="49" Description="" PIN="49" FET="NBias" HighLow="HighBias" SignalName="NPA_WEIGHT_INH1_N" DefaultCoarse="24u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="50" Description="" PIN="50" FET="PBias" HighLow="HighBias" SignalName="NPA_WEIGHT_EXC_P" DefaultCoarse="50n" DefaultFine="98" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="51" Description="" PIN="51" FET="PBias" HighLow="HighBias" SignalName="NPA_WEIGHT_EXC1_P" DefaultCoarse="0.4u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="52" Description="" PIN="52" FET="PBias" HighLow="HighBias" SignalName="NPA_WEIGHT_EXC0_P" DefaultCoarse="0.4u" DefaultFine="127" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="53" Description="" PIN="53" FET="NBias" HighLow="HighBias" SignalName="NPA_WEIGHT_INH_N" DefaultCoarse="3.2u" DefaultFine="100" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="54" Description="" PIN="54" FET="PBias" HighLow="HighBias" SignalName="NPDPIE_THR_P" DefaultCoarse="105p" DefaultFine="244" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="55" Description="" PIN="55" FET="PBias" HighLow="HighBias" SignalName="NPDPIE_TAU_P" DefaultCoarse="105p" DefaultFine="244" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="56" Description="" PIN="56" FET="PBias" HighLow="HighBias" SignalName="NPDPII_TAU_P" DefaultCoarse="105p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="57" Description="" PIN="57" FET="PBias" HighLow="HighBias" SignalName="NPDPII_THR_P" DefaultCoarse="105p" DefaultFine="244" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="58" Description="" PIN="58" FET="NBias" HighLow="HighBias" SignalName="BIAS_58" DefaultCoarse="24u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="59" Description="" PIN="59" FET="PBias" HighLow="HighBias" SignalName="BIAS_59" DefaultCoarse="3.2u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="60" Description="" PIN="60" FET="NBias" HighLow="HighBias" SignalName="BIAS_60" DefaultCoarse="0.4u" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="61" Description="" PIN="61" FET="NBias" HighLow="HighBias" SignalName="BIAS_61" DefaultCoarse="820p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="62" Description="" PIN="62" FET="NBias" HighLow="HighBias" SignalName="BIAS_62" DefaultCoarse="15p" DefaultFine="0" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="63" Description="" PIN="63" FET="NBias" HighLow="HighBias" SignalName="BIAS_63" DefaultCoarse="820p" DefaultFine="255" BiasType="Normal" Enable="BiasEnable"/>
+    <parameter Count="64" Description="" PIN="64" FET="NONE" HighLow="NONE" SignalName="BUFFER_BIASES" DefaultCoarse="3.2u" DefaultFine="80" BiasType="NONE" Enable="NONE"/>
+    <parameter Count="65" Description="" PIN="65" FET="NONE" HighLow="NONE" SignalName="SSP" DefaultCoarse="SPECIAL" DefaultFine="7" BiasType="NONE" Enable="NONE"/>
+    <parameter Count="66" Description="" PIN="66" FET="NONE" HighLow="NONE" SignalName="SSN" DefaultCoarse="SPECIAL" DefaultFine="15" BiasType="NONE" Enable="NONE"/>
+    <parameter Count="67" Description="Bias bit" SignalName="LowBias" Bit="0"/>
+    <parameter Count="68" Description="Bias bit" SignalName="HighBias" Bit="1"/>
+    <parameter Count="69" Description="Bias bit" SignalName="CascodeBias" Bit="0"/>
+    <parameter Count="70" Description="Bias bit" SignalName="Normal" Bit="1"/>
+    <parameter Count="71" Description="Bias bit" SignalName="PBias" Bit="0"/>
+    <parameter Count="72" Description="Bias bit" SignalName="NBias" Bit="1"/>
+    <parameter Count="73" Description="Bias bit" SignalName="BiasEnable" Bit="0"/>
+    <parameter Count="74" Description="Bias bit" SignalName="BiasDisable" Bit="1"/>
+    <parameter Count="75" Description="Bias bit" SignalName="NONE" Bit="0"/>
+    <parameter Count="76" Description="Coarse current max. value" SignalName="Scale0" Value="24u" Index="0"/>
+    <parameter Count="77" Description="Coarse current max. value" SignalName="Scale1" Value="3.2u" Index="1"/>
+    <parameter Count="78" Description="Coarse current max. value" SignalName="Scale2" Value="0.4u" Index="2"/>
+    <parameter Count="79" Description="Coarse current max. value" SignalName="Scale3" Value="50n" Index="3"/>
+    <parameter Count="80" Description="Coarse current max. value" SignalName="Scale4" Value="6.5n" Index="4"/>
+    <parameter Count="81" Description="Coarse current max. value" SignalName="Scale5" Value="802p" Index="5"/>
+    <parameter Count="82" Description="Coarse current max. value" SignalName="Scale6" Value="105p" Index="6"/>
+    <parameter Count="83" Description="Coarse current max. value" SignalName="Scale7" Value="15p" Index="7"/>
+    <parameter Count="84" Description="Coarse current max. value" SignalName="Scale8" Value="SPECIAL" Index="8"/>
+</parameters>
+</chip>
