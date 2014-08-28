@@ -52,7 +52,7 @@ class Lsm:
         # init reservoir 
         #self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
         self._init_lsm()
-        self.program_config()
+        #self.program_config()
         #self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
 
     ### ========================= functions ===================================
@@ -150,23 +150,20 @@ class Lsm:
         '''
         
         nR = len(rates) # Number of rates
-        if not nR == len(G):
-            # TODO: Raise an error
-            print "Rates and G must have the same length."
-            return 
+#        if not nR == len(G):
+#            # TODO: Raise an error
+#            print "Rates and G must have the same length."
+#            return 
         
         # Square
         x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
         t   = np.linspace(0,1,nT,endpoint=False)
         V   = np.array([r(t) for r in rates])
-        if nR == 1:
-            # All rates have the same spatial distribution.
-            M = G(x,y).ravel()[:,None] * np.sum (V)
-        else :
-            M = np.zeros (nx*ny, nT)
-            for g,r in zip(G,V):
-                M += np.array(g(x,y).ravel()[:,None] * r)
-        
+
+        M = np.zeros ([nx*ny, nT])
+        for g,r in zip(G,V):
+            M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
+
         return M
 
     def stimulate_reservoir(self, nsteps = 3, max_freq = 1500, min_freq = 500, duration = 1000, c=0.5, trials=5):
