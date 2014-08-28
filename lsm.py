@@ -189,7 +189,7 @@ class Lsm:
             for n in xrange (0,3):
                 G.append(lambda x,y,w=n: np.exp (-((x-x0[w])**2 + y**2)))
 
-        M = liquid._generate_input_mean_rates(G, rates, nsteps) 
+        M = self._generate_input_mean_rates(G, rates, nsteps) 
         nsyn, nsteps = np.shape(M)
 
         #we pick a random projection
