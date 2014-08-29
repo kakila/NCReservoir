@@ -26,28 +26,9 @@ import sys
 
 #parameters and actions 
 n_steps = 10
-do_figs_encoding = False
-
-#populations divisible by 2 for encoders
-neuron_ids = np.linspace(0,255,256)
-npops = len(neuron_ids)
-
-#setup
-prefix='./'
-setuptype = './setupfiles/mc_final_mn256r1.xml'
-setupfile = './setupfiles/final_mn256r1_retina_monster.xml'
-nsetup = pyNCS.NeuroSetup(setuptype, setupfile, prefix=prefix)
-chip = nsetup.chips['mn256r1']
-#nsetup.mapper._init_fpga_mapper()
-#chip.configurator._set_multiplexer(0)
-
-#populate neurons
-rcnpop = pyNCS.Population('neurons', 'for fun')
-rcnpop.populate_all(nsetup,'mn256r1','excitatory')
-
 #init nef on neuromorphic chips
 import lsm as L
-liquid = L.Lsm(rcnpop) #init liquid state machine 
+liquid = L.Lsm() #init liquid state machine 
 
 # Mean rate basis
 rates = []

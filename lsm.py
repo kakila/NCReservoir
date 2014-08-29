@@ -35,25 +35,27 @@ import matplotlib
 from pylab import *
 
 class Lsm:
-    def __init__(self, population,  cee=0.5, cii=0.3):
-        ### ========================= define what is needed to program the chip ====
-        # resources
-        self.matrix_learning_rec = np.zeros([256,256])
-        self.matrix_learning_pot = np.zeros([256,256])
-        self.matrix_programmable_rec = np.zeros([256,256])
-        self.matrix_programmable_w = np.zeros([256,256])
-        self.matrix_programmable_exc_inh = np.zeros([256,256])
-        # end resources
-        # network parameters
-        self.cee = cee
-        self.cii = cii
-        self.rcn = population
-        self.setup = population.setup
-        # init reservoir 
-        self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
-        self._init_lsm()
-        self.program_config()
-        self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
+    def __init__(self, population=None,  cee=0.5, cii=0.3):
+        if population:
+            ### ========================= define what is needed to program the chip ====
+            # resources
+            self.matrix_learning_rec = np.zeros([256,256])
+            self.matrix_learning_pot = np.zeros([256,256])
+            self.matrix_programmable_rec = np.zeros([256,256])
+            self.matrix_programmable_w = np.zeros([256,256])
+            self.matrix_programmable_exc_inh = np.zeros([256,256])
+            # end resources
+            # network parameters
+            self.cee = cee
+            self.cii = cii
+            self.rcn = population
+            self.setup = population.setup
+            
+            # init reservoir 
+            self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
+            self._init_lsm()
+            self.program_config()
+            self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
 
     ### ========================= functions ===================================
     def _init_lsm(self):
@@ -296,3 +298,18 @@ class Lsm:
                 index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] >     bins[b] , spike_train[:,0] < bins[b+1] )) )
                 mean_rate[i,b] = len(index_neu[0])*1000.0/(bins[b+1]-bins[b]) # time unit: ms
         return mean_rate
+        
+### HELPER FUNCTIONS
+def ts2sig (t,ts,n_id,time_resp,N):
+    nT  = len(t)
+    nid = np.unique(n_id)
+    nS  = len(nid)
+
+    Y = np.zeros([nT,N])
+    for i in xrange(nS):
+        idx = np.where(n_id == nid[i])[1]
+        for j in idx:
+            #            import pdb; pdb.set_trace()
+            Y[:,i] += time_resp(t,ts[j]);
+
+    return Y
