@@ -33,29 +33,30 @@ import time
 import pyNCS
 import matplotlib
 from pylab import *
+from sklearn.linear_model import Ridge
+from sklearn import metrics
 
 class Lsm:
-    def __init__(self, population=None,  cee=0.5, cii=0.3):
-        if population:
-            ### ========================= define what is needed to program the chip ====
-            # resources
-            self.matrix_learning_rec = np.zeros([256,256])
-            self.matrix_learning_pot = np.zeros([256,256])
-            self.matrix_programmable_rec = np.zeros([256,256])
-            self.matrix_programmable_w = np.zeros([256,256])
-            self.matrix_programmable_exc_inh = np.zeros([256,256])
-            # end resources
-            # network parameters
-            self.cee = cee
-            self.cii = cii
-            self.rcn = population
-            self.setup = population.setup
-            
-            # init reservoir 
+    def __init__(self, population,  cee=0.5, cii=0.3, use_chip = False):
+        ### ========================= define what is needed to program the chip ====
+        # resources
+        self.matrix_learning_rec = np.zeros([256,256])
+        self.matrix_learning_pot = np.zeros([256,256])
+        self.matrix_programmable_rec = np.zeros([256,256])
+        self.matrix_programmable_w = np.zeros([256,256])
+        self.matrix_programmable_exc_inh = np.zeros([256,256])
+        # end resources
+        # network parameters
+        self.cee = cee
+        self.cii = cii
+        self.rcn = population
+        self.setup = population.setup
+        # init reservoir 
+        if(use_chip == True):
             self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
             self._init_lsm()
             self.program_config()
-            self.setup.chips['mn256r1'].load_parameters('biases/biases_liquid.biases')
+            self.setup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')
 
     ### ========================= functions ===================================
     def _init_lsm(self):
@@ -131,7 +132,7 @@ class Lsm:
                     else:
                         self.matrix_programmable_w[post,pre] = w[0]
 
-    def _generate_input_mean_rates (self,G, rates, nT, nx=16, ny=16):
+    def _generate_input_mean_rates (self,G, rates, nT, nx=16, ny=16) :
         '''
         Generates a matrix the mean rates of the input neurons defined in
         nT time intervals.
@@ -168,30 +169,19 @@ class Lsm:
 
         return M
 
-    def stimulate_reservoir(self, nsteps = 3, max_freq = 1500, min_freq = 500, duration = 1000, trials=5):
+    def stimulate_reservoir(self, rate_matrix, max_freq = 1000, min_freq = 350, duration = 1000, trials=5, neu_sync = 10, delay_sync = 500, duration_sync = 200, freq_sync=200,plot_samples = False):
         '''
         stimulate reservoir via virtual input synapses
         nsteps -> time steps to be considered in a duration = duration
         max_freq -> max input freq
         min_freq -> min input freq
         trials -> number of different stimulations with inhonogeneous poisson spike trains
+        rate_matrix -> normalized rate matrix with dimensions [nsyn,timebins]
         '''
         vsyn = 4
         somach = self.rcn.soma.channel
         inputch = 1
-
-        rates = []
-        for n in xrange(0,3):
-            rates.append(lambda t,w=n: 0.5+0.5*np.sin(2*np.pi*(w+1)*t))
-            # Single spatial distribution
-            #G = [lambda x,y: np.exp (-(x**2 + y**2))]   
-            # Multiple spatial distribution
-            G = []
-            x0 = [-0.5, 0, 0.5]
-            for n in xrange (0,3):
-                G.append(lambda x,y,w=n: np.exp (-((x-x0[w])**2 + y**2)))
-
-        M = self._generate_input_mean_rates(G, rates, nsteps) 
+        M = rate_matrix
         nsyn, nsteps = np.shape(M)
 
         #we pick a random projection
@@ -205,23 +195,43 @@ class Lsm:
         #stim_matrix = r_[[500*np.random.random(len(self.rcn.soma.addr)*vsyn)]*nsteps]
         #stim_matrix = r_[[np.linspace(min_freq,max_freq,len(self.rcn.soma.addr)*vsyn)]*nsteps]
         #stim_matrix = np.r_[[np.linspace(min_freq,max_freq,nsyn)]*nsteps]
-
         timebins = np.linspace(0, duration, nsteps)
         syn = self.rcn.synapses['virtual_exc'][index_syn.astype(int)]
 
         #rescale M to max/min freq
         new_value = np.ceil(( (M - np.min(M)) / (np.max(M) - np.min(M)) ) * (max_freq  - min_freq) + min_freq)
 
+        index_neu = self.rcn.synapses['virtual_exc'].addr['neu'] == neu_sync           
+        syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
+        sync_spikes = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
+
+        timev = np.linspace(0,duration+delay_sync+1000,2000)
+        func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
+        
         #create mean rates basis
+        if(plot_samples == True):
+            figure()
+        spiketrain = syn.spiketrains_inh_poisson(new_value,timebins+delay_sync)
+        #spiketrain = syn.spiketrains_regular(min_freq*2, duration=duration+delay_sync)
+        stimulus = pyNCS.pyST.merge_sequencers(sync_spikes, spiketrain)
         for this_stim in range(trials):
-            spiketrain = syn.spiketrains_inh_poisson(new_value,timebins)
-            out = self.setup.stimulate(spiketrain, send_reset_event=False, duration=duration)
+            out = self.setup.stimulate(stimulus, send_reset_event=False, duration=duration+delay_sync+1000)
             out = out[somach]
-            out.t_start = np.max(out.raw_data()[:,0])-duration
-            raw_out = out.raw_data()
-            raw_out[:,0] = raw_out[:,0]-np.min(raw_out[:,0]) 
-            tot_outputs.append(raw_out)
+            #sync data with sync neuron
+            raw_data = out.raw_data()
+            sync_index = raw_data[:,1] == neu_sync
+            start_time = np.min(raw_data[sync_index,0])
+            index_after_sync = raw_data[:,0] > start_time
+            clean_data = raw_data[index_after_sync,:]
+            clean_data[:,0] = clean_data[:,0]-np.min(clean_data[:,0])
+            #copy synched data
+            tot_outputs.append(clean_data)
             tot_inputs.append(spiketrain[inputch].raw_data())
+            if(plot_samples == True):
+                Y = self._ts2sig(timev,tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1], func_timebase, 256 )
+                for i in range(256):
+                    subplot(16,16,i)
+                    plot(Y[:,i])
 
         return tot_inputs, tot_outputs
 
@@ -298,18 +308,117 @@ class Lsm:
                 index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] >     bins[b] , spike_train[:,0] < bins[b+1] )) )
                 mean_rate[i,b] = len(index_neu[0])*1000.0/(bins[b+1]-bins[b]) # time unit: ms
         return mean_rate
-        
-### HELPER FUNCTIONS
-def ts2sig (t,ts,n_id,time_resp,N):
-    nT  = len(t)
-    nid = np.unique(n_id)
-    nS  = len(nid)
 
-    Y = np.zeros([nT,N])
-    for i in xrange(nS):
-        idx = np.where(n_id == nid[i])[1]
-        for j in idx:
-            #            import pdb; pdb.set_trace()
-            Y[:,i] += time_resp(t,ts[j]);
+    def poke_and_record(self, c=0.3, nsteps=30, num_gestures= 1, ntrials = 4, do_plot = False, learn_real_time = False):
+        '''
+        c -> random connectivity from stimuli to reservoir
+        nsteps -> timesteps
+        num_gestures -> stuff to classify generated
+        ntrials -> number of trials per gesture
+        '''
+        dim = np.round(np.sqrt(len(self.rcn.synapses['virtual_exc'].addr)*c))
+        gestures = []
+        for this_gesture in range(num_gestures):
+            freqs = np.random.randint(7,size=3).tolist()   
+            centers = np.random.random((3,2)).tolist()
+            width = np.random.random((1,3)).tolist()
+            gestures.append([{'freq': freqs, 'centers': centers, 'width': width}])
 
-    return Y
+        import json
+        json.dump(gestures, open("lsm/gestures.txt",'w'))
+        #gestures = [ {'freq':[1,5,7], 'centers': [(0.0,-0.5),(0.8,0.8),(-0.8,0.3)], 'width': [1.2,0.5,1.3]} ]
+        rates = []
+
+        timev = np.linspace(0,1550,1550)
+        func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
+        values = np.linspace(-1,1,256)
+        self.decoders = []
+
+        for ind,this_g in enumerate(gestures):
+            #fixed gesture g
+            for f  in this_g[0]['freq']:
+                rates.append(lambda t,w=f: 0.5+0.5*np.sin(2*np.pi*w*t))
+
+            # Multiple spatial distribution
+            G = []
+            for width,pos in zip(this_g[0]['width'], this_g[0]['centers']):
+                G.append(lambda x,y,d=width,w=pos: np.exp ((-(x-w[0])**2 + (y-w[1])**2)/(np.sum(width)**2)))
+
+            M = self._generate_input_mean_rates(G, rates, nsteps, nx=dim, ny=dim) 
+
+            inputs, outputs = self.stimulate_reservoir(M,trials=ntrials, plot_samples=True)
+            if( do_plot == True):
+                print "plotting..."
+                ion()
+                figure()    
+                hold(True)
+
+            #Linear least squares with l2 regularization.
+            self.clf = Ridge(alpha=1.0)
+                    
+            for trial in range(ntrials):
+                np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[trial])
+                np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[trial])
+
+                if(learn_real_time == True):
+                    #pass output trought the membrane
+                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase , 256 )
+                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase, 256 )
+                    #learn transformation -1 1
+                    if(trial < ntrials -1):
+                        self.clf.fit(Y.T,values)
+                    else:
+                        print "we are trying to predict this one"
+                        self.pred = self.clf.predict(Y.T)                        
+                        self.score = 1 - metrics.f1_score(values, self.pred) 
+                        print  "we scored: ", self.score
+
+                if(do_plot ==True):
+                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase , 256 )
+                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase, 256 )
+                    ac=np.mean(Y**2,axis=0)
+                    max_pos = np.where(ac == np.max(ac))[0]
+                    subplot(3,1,1)
+                    plot(X[:,125])
+                    subplot(3,1,2)
+                    plot(Y[:,max_pos])
+                    subplot(3,1,3)
+                    CO = np.dot(Y.T,Y)
+                    CI = np.dot(X.T,X)
+                    si = np.linalg.svd(CI, full_matrices=True, compute_uv=False)
+                    so = np.linalg.svd(CO, full_matrices=True, compute_uv=False)
+                    semilogy(so/so[0], 'bo-', label="outputs")
+                    semilogy(si/si[0], 'go-', label="inputs")
+                    legend(loc="best")
+                    #try decoders
+                    decoders = self.compute_decoders(values, Y)
+                    self.decoders.append(decoders)
+        return       
+
+    ### HELPER FUNCTIONS
+    def _ts2sig (self, t,ts,n_id,time_resp,N):
+        '''
+        lsm.ts2sig(np.linspace(0,1000,1000),outputs[:,0], outputs[:,1], lambda t,ts: np.exp((-(t-ts)**2)/(2*100)), 256 )
+        '''
+        nT = len(t)
+        nid = np.unique(n_id)
+        nS = len(nid)
+        Y = np.zeros([nT,N])
+        for i in xrange(nS):
+            idx = np.where(n_id == nid[i])[0]
+            for j in idx:
+                # import pdb; pdb.set_trace()
+                Y[:,i] += time_resp(t,ts[j]);
+        return Y
+
+    def compute_decoders(self, values, Y):
+        '''
+        solve decoders for inputs
+        values has dim 256
+        Y has dim nT,256
+        '''
+        gamma=np.dot(Y, Y.T) #I diagonal noise add I = eye(len(gamma))
+        upsilon=np.dot(Y, values) #associated function 
+        ginv=np.linalg.pinv(gamma)
+        decoders=np.dot(ginv,upsilon)
+        return decoders
