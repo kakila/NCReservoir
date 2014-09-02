@@ -37,7 +37,7 @@ from sklearn.linear_model import RidgeCV
 from sklearn import metrics
 
 class Lsm:
-    def __init__(self, population=None,  cee=0.5, cii=0.3, use_chip = False):
+    def __init__(self, population=None,  cee=0.5, cii=0.3):
         ### ========================= define what is needed to program the chip ====
         self.shape = (16,16);
         self.Nn    = np.prod(self.shape);
@@ -53,19 +53,18 @@ class Lsm:
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
+        self.timev = []
+        self.func_timebase = []
         alpha = np.logspace (-6,3,50)
-        self._regressor = {"input":RidgeCV(alphas=alpha), \
-                           "output":RidgeCV(alphas=alpha)} # Linear regression with cross-validation
+        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True), \
+                           "output":RidgeCV(alphas=alpha,normalize=True)} # Linear regression with cross-validation
         # end resources for RC
         # network parameters
         self.cee = cee
         self.cii = cii
         self.rcn = population
         if population:
-          self.setup = population.setup
-        
-        # init reservoir 
-        if(use_chip == True):
+            self.setup = population.setup
             self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
             self._init_lsm()
             self.program_config()
@@ -182,7 +181,7 @@ class Lsm:
 
         return M
 
-    def stimulate_reservoir(self, rate_matrix, max_freq = 1000, min_freq = 350, duration = 1000, trials=5, neu_sync = 10, delay_sync = 500, duration_sync = 200, freq_sync=200,plot_samples = False):
+    def stimulate_reservoir(self, rate_matrix, max_freq = 1000, min_freq = 350, duration = 1000, trials=5, neu_sync = 10, delay_sync = 500, duration_sync = 200, freq_sync=200, plot_samples = False):
         '''
         stimulate reservoir via virtual input synapses
         nsteps -> time steps to be considered in a duration = duration
@@ -218,12 +217,12 @@ class Lsm:
         syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
         sync_spikes = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
 
-        timev = np.linspace(0,duration+delay_sync+1000,2000)
-        func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
+        self.timev = np.linspace(0,duration+delay_sync+1000,2000)
+        self.func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
         
         #create mean rates basis
-        if(plot_samples == True):
-            figure()
+        #if(plot_samples == True):
+        #    figure()
         spiketrain = syn.spiketrains_inh_poisson(new_value,timebins+delay_sync)
         #spiketrain = syn.spiketrains_regular(min_freq*2, duration=duration+delay_sync)
         stimulus = pyNCS.pyST.merge_sequencers(sync_spikes, spiketrain)
@@ -241,7 +240,7 @@ class Lsm:
             tot_outputs.append(clean_data)
             tot_inputs.append(spiketrain[inputch].raw_data())
             if(plot_samples == True):
-                Y = self._ts2sig(timev,tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1], func_timebase)
+                Y = self._ts2sig(tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1])
                 for i in range(256):
                     subplot(16,16,i)
                     plot(Y[:,i])
@@ -322,7 +321,7 @@ class Lsm:
                 mean_rate[i,b] = len(index_neu[0])*1000.0/(bins[b+1]-bins[b]) # time unit: ms
         return mean_rate
 
-    def poke_and_record(self, c=0.3, nsteps=30, num_gestures= 1, ntrials = 4, do_plot = False, learn_real_time = False):
+    def poke_and_record(self, c=0.3, nsteps=30, num_gestures= 1, ntrials = 4, do_plot_svd = False, learn_real_time = False, plot_all_analog=False):
         '''
         c -> random connectivity from stimuli to reservoir
         nsteps -> timesteps
@@ -342,8 +341,7 @@ class Lsm:
         #gestures = [ {'freq':[1,5,7], 'centers': [(0.0,-0.5),(0.8,0.8),(-0.8,0.3)], 'width': [1.2,0.5,1.3]} ]
         rates = []
 
-        timev = np.linspace(0,1550,1550)
-        func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
+        func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
         values = np.linspace(-1,1,256)
         self.decoders = []
 
@@ -359,40 +357,42 @@ class Lsm:
 
             M = self._generate_input_mean_rates(G, rates, nsteps, nx=dim, ny=dim) 
 
-            inputs, outputs = self.stimulate_reservoir(M,trials=ntrials, plot_samples=True)
-            if( do_plot == True):
+            if( do_plot_svd == True):
                 print "plotting..."
                 ion()
                 figure()    
                 hold(True)
-
-            # DEPRE
-            #Linear least squares with l2 regularization.
-            #self.clf = Ridge(alpha=1.0)
-                    
+            #very bad it's plotting inside
+            if(plot_all_analog):
+                figure()
             for trial in range(ntrials):
-                np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[trial])
-                np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[trial])
+                inputs, outputs = self.stimulate_reservoir(M,trials=1, plot_samples=plot_all_analog)
+                np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[0])
+                np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[0])
 
                 if(learn_real_time == True):
-                    # Convert input and output spikes to analog signals
-                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase)
-                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase)
-                    
-                    self._realtime_learn (X,Y,teach_sig)
-                    # DEPRE
-                    #learn transformation -1 1
-                    #if(trial < ntrials -1):
-                    #    self.clf.fit(Y.T,values)
-                    #else:
-                    #    print "we are trying to predict this one"
-                    #    self.pred = self.clf.predict(Y.T)                        
-                    #    self.score = 1 - metrics.f1_score(values, self.pred) 
-                    #    print  "we scored: ", self.score
 
-                if(do_plot ==True):
-                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase)
-                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase)
+                    ac = np.mean(func_avg(self.timev[:,None], inputs[0][:,0][None,:]), axis=1) 
+                    ac = ac / np.max(ac)
+                    ac = ac[:,None]
+                    teach_sig = np.sin(np.pi*2*3*(self.timev[:,None]/1000.0))*ac
+                    norm_teach = np.sum(teach_sig**2) 
+
+                    # Convert input and output spikes to analog signals
+                    X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
+                    Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
+                   
+                    self.currentAnalogIn = X
+                    self.currentAnalogOut = Y
+                    self.currentTeach = teach_sig
+                    self._realtime_learn (X,Y,teach_sig)
+                    pred_ = self.RC_predict(X,Y)
+                    rme = np.sum((np.hstack((pred_['input'],pred_['output']))-teach_sig)**2, axis=0)/norm_teach
+                    print "RMS in - out", rme
+
+                if(do_plot_svd ==True):
+                    X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
+                    Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
                     ac=np.mean(Y**2,axis=0)
                     max_pos = np.where(ac == np.max(ac))[0]
                     subplot(3,1,1)
@@ -412,7 +412,7 @@ class Lsm:
                     self.decoders.append(decoders)
         return       
 
-    def reset_RC (self):
+    def RC_reset (self):
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)}
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
@@ -428,7 +428,8 @@ class Lsm:
         '''
         Regression of teach_sig using inputs (x) and outputs (y).
         '''
-        
+        x = x - np.mean(x,axis=0) 
+        y = y - np.mean(y,axis=0)
         nT,Nn = x.shape
         # Covariance matrix
         Cx = np.dot (x.T, x) / nT # input
@@ -449,18 +450,19 @@ class Lsm:
         self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
 
-    def _ts2sig (self, t,ts,n_id,time_resp):
+    def _ts2sig (self, ts, n_id):
         '''
-        lsm.ts2sig(np.linspace(0,1000,1000),outputs[:,0], outputs[:,1], lambda t,ts: np.exp((-(t-ts)**2)/(2*100)), 256 )
+        ts - > time stamp of spikes
+        n_id -> neuron id 
         '''
-        nT = len(t)
+        nT = len(self.timev)
         nid = np.unique(n_id)
         nS = len(nid)
         Y = np.zeros([nT,self.Nn])
         for i in xrange(nS):
             idx = np.where(n_id == nid[i])[0]
             for j in idx:
-                Y[:,i] += time_resp(t,ts[j]);
+                Y[:,i] += self.func_timebase(self.timev,ts[j]);
         return Y
 
     def compute_decoders(self, values, Y):
