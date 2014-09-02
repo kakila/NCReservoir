@@ -32,9 +32,9 @@ t = np.linspace (0,1,1e3)[:,None]
 M = np.random.randn(1,256)
 x = t.dot(M)
 bias = 0.1*np.random.randn(1,256)
-expo = [([1]+range(15))*16]
+expo = [([1]*11+range(5))*16]
 y = t**expo + bias 
-K = np.random.rand(256,1)
+K = np.random.randn(256,1)
 K.sort(axis=0)
 z = y.dot(K[::-1])
 for i in xrange(100):
