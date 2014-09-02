@@ -33,24 +33,37 @@ import time
 import pyNCS
 import matplotlib
 from pylab import *
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import RidgeCV
 from sklearn import metrics
 
 class Lsm:
-    def __init__(self, population,  cee=0.5, cii=0.3, use_chip = False):
+    def __init__(self, population=None,  cee=0.5, cii=0.3, use_chip = False):
         ### ========================= define what is needed to program the chip ====
+        self.shape = (16,16);
+        self.Nn    = np.prod(self.shape);
+        Nn2 = [self.Nn,self.Nn]
         # resources
-        self.matrix_learning_rec = np.zeros([256,256])
-        self.matrix_learning_pot = np.zeros([256,256])
-        self.matrix_programmable_rec = np.zeros([256,256])
-        self.matrix_programmable_w = np.zeros([256,256])
-        self.matrix_programmable_exc_inh = np.zeros([256,256])
+        self.matrix_learning_rec = np.zeros(Nn2)
+        self.matrix_learning_pot = np.zeros(Nn2)
+        self.matrix_programmable_rec = np.zeros(Nn2)
+        self.matrix_programmable_w = np.zeros(Nn2)
+        self.matrix_programmable_exc_inh = np.zeros(Nn2)
         # end resources
+        # resources for Reservoir Computing
+        self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
+        self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
+        self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
+        alpha = np.logspace (-6,3,50)
+        self._regressor = {"input":RidgeCV(alphas=alpha), \
+                           "output":RidgeCV(alphas=alpha)} # Linear regression with cross-validation
+        # end resources for RC
         # network parameters
         self.cee = cee
         self.cii = cii
         self.rcn = population
-        self.setup = population.setup
+        if population:
+          self.setup = population.setup
+        
         # init reservoir 
         if(use_chip == True):
             self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
@@ -228,7 +241,7 @@ class Lsm:
             tot_outputs.append(clean_data)
             tot_inputs.append(spiketrain[inputch].raw_data())
             if(plot_samples == True):
-                Y = self._ts2sig(timev,tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1], func_timebase, 256 )
+                Y = self._ts2sig(timev,tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1], func_timebase)
                 for i in range(256):
                     subplot(16,16,i)
                     plot(Y[:,i])
@@ -353,29 +366,33 @@ class Lsm:
                 figure()    
                 hold(True)
 
+            # DEPRE
             #Linear least squares with l2 regularization.
-            self.clf = Ridge(alpha=1.0)
+            #self.clf = Ridge(alpha=1.0)
                     
             for trial in range(ntrials):
                 np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[trial])
                 np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[trial])
 
                 if(learn_real_time == True):
-                    #pass output trought the membrane
-                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase , 256 )
-                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase, 256 )
+                    # Convert input and output spikes to analog signals
+                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase)
+                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase)
+                    
+                    self._realtime_learn (X,Y,teach_sig)
+                    # DEPRE
                     #learn transformation -1 1
-                    if(trial < ntrials -1):
-                        self.clf.fit(Y.T,values)
-                    else:
-                        print "we are trying to predict this one"
-                        self.pred = self.clf.predict(Y.T)                        
-                        self.score = 1 - metrics.f1_score(values, self.pred) 
-                        print  "we scored: ", self.score
+                    #if(trial < ntrials -1):
+                    #    self.clf.fit(Y.T,values)
+                    #else:
+                    #    print "we are trying to predict this one"
+                    #    self.pred = self.clf.predict(Y.T)                        
+                    #    self.score = 1 - metrics.f1_score(values, self.pred) 
+                    #    print  "we scored: ", self.score
 
                 if(do_plot ==True):
-                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase , 256 )
-                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase, 256 )
+                    X = self._ts2sig(timev,inputs[trial][:,0], np.floor(inputs[trial][:,1]), func_timebase)
+                    Y = self._ts2sig(timev,outputs[trial][:,0], outputs[trial][:,1], func_timebase)
                     ac=np.mean(Y**2,axis=0)
                     max_pos = np.where(ac == np.max(ac))[0]
                     subplot(3,1,1)
@@ -395,19 +412,54 @@ class Lsm:
                     self.decoders.append(decoders)
         return       
 
+    def reset_RC (self):
+        self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)}
+        self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
+        self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
+        print "RC storage reseted!"
+
+    def RC_predict (self,x,y):
+        Z = {"input":  self._regressor["input"].predict(x), \
+             "output": self._regressor["output"].predict(y)}
+        return Z
+
     ### HELPER FUNCTIONS
-    def _ts2sig (self, t,ts,n_id,time_resp,N):
+    def _realtime_learn (self, x, y, teach_sig):
+        '''
+        Regression of teach_sig using inputs (x) and outputs (y).
+        '''
+        
+        nT,Nn = x.shape
+        # Covariance matrix
+        Cx = np.dot (x.T, x) / nT # input
+        C  = np.dot (y.T, y) / nT # output
+        # Projection on teaching signal(s)
+        Zx = np.dot (x.T, teach_sig) / nT
+        Z  = np.dot (y.T, teach_sig) / nT
+        
+        # Update cov matrix
+        self.CovMatrix["input"]  += Cx
+        self.CovMatrix["output"] += C
+        # Update projection
+        self.ProjTeach["input"]   += Zx 
+        self.ProjTeach["output"]  += Z
+        # Update weights
+        self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
+        self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
+        self.ReadoutW["input"]  = self._regressor["input"].coef_.T
+        self.ReadoutW["output"] = self._regressor["output"].coef_.T
+
+    def _ts2sig (self, t,ts,n_id,time_resp):
         '''
         lsm.ts2sig(np.linspace(0,1000,1000),outputs[:,0], outputs[:,1], lambda t,ts: np.exp((-(t-ts)**2)/(2*100)), 256 )
         '''
         nT = len(t)
         nid = np.unique(n_id)
         nS = len(nid)
-        Y = np.zeros([nT,N])
+        Y = np.zeros([nT,self.Nn])
         for i in xrange(nS):
             idx = np.where(n_id == nid[i])[0]
             for j in idx:
-                # import pdb; pdb.set_trace()
                 Y[:,i] += time_resp(t,ts[j]);
         return Y
 
