@@ -35,6 +35,7 @@ import matplotlib
 from pylab import *
 from sklearn.linear_model import RidgeCV
 from sklearn import metrics
+import pdb
 
 class Lsm:
     def __init__(self, population=None,  cee=0.5, cii=0.3):
@@ -181,14 +182,10 @@ class Lsm:
 
         return M
 
-    def stimulate_reservoir(self, rate_matrix, max_freq = 1000, min_freq = 350, duration = 1000, trials=5, neu_sync = 10, delay_sync = 500, duration_sync = 200, freq_sync=200, plot_samples = False):
+    def create_spiketrain_from_matrix(self, rate_matrix, max_freq= 1000, min_freq = 350, duration = 1000, nsteps = 30, neu_sync=10, delay_sync = 500, duration_sync = 200, freq_sync = 600):
         '''
-        stimulate reservoir via virtual input synapses
-        nsteps -> time steps to be considered in a duration = duration
-        max_freq -> max input freq
-        min_freq -> min input freq
-        trials -> number of different stimulations with inhonogeneous poisson spike trains
-        rate_matrix -> normalized rate matrix with dimensions [nsyn,timebins]
+        create stimulus from rate matrix 
+        it adds the sync neu as well
         '''
         vsyn = 4
         somach = self.rcn.soma.channel
@@ -201,9 +198,6 @@ class Lsm:
         index_syn_tot = np.linspace(0,nsyn_tot-1, nsyn_tot)
         np.random.shuffle(index_syn_tot)
         index_syn = index_syn_tot[0:nsyn]
-        tot_outputs = []
-        tot_inputs = []
-        
         #stim_matrix = r_[[500*np.random.random(len(self.rcn.soma.addr)*vsyn)]*nsteps]
         #stim_matrix = r_[[np.linspace(min_freq,max_freq,len(self.rcn.soma.addr)*vsyn)]*nsteps]
         #stim_matrix = np.r_[[np.linspace(min_freq,max_freq,nsyn)]*nsteps]
@@ -217,7 +211,7 @@ class Lsm:
         syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
         sync_spikes = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
 
-        self.timev = np.linspace(0,duration+delay_sync+1000,2000)
+        self.timev = np.linspace(0,duration+delay_sync+1000,300)
         self.func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
         
         #create mean rates basis
@@ -226,8 +220,24 @@ class Lsm:
         spiketrain = syn.spiketrains_inh_poisson(new_value,timebins+delay_sync)
         #spiketrain = syn.spiketrains_regular(min_freq*2, duration=duration+delay_sync)
         stimulus = pyNCS.pyST.merge_sequencers(sync_spikes, spiketrain)
+
+        return stimulus
+
+    def stimulate_reservoir(self, stimulus, neu_sync = 10,  trials=5, plot_samples = False, figure_h=None):
+        '''
+        stimulate reservoir via virtual input synapses
+        nsteps -> time steps to be considered in a duration = duration
+        max_freq -> max input freq
+        min_freq -> min input freq
+        trials -> number of different stimulations with inhonogeneous poisson spike trains
+        rate_matrix -> normalized rate matrix with dimensions [nsyn,timebins]
+        '''
+        duration = np.max(stimulus[1].raw_data()[:,0])-np.min(stimulus[1].raw_data()[:,0])+1000
+        somach = self.rcn.soma.channel
+        tot_outputs = []
+        tot_inputs = []
         for this_stim in range(trials):
-            out = self.setup.stimulate(stimulus, send_reset_event=False, duration=duration+delay_sync+1000)
+            out = self.setup.stimulate(stimulus, send_reset_event=False, duration=duration)
             out = out[somach]
             #sync data with sync neuron
             raw_data = out.raw_data()
@@ -238,10 +248,11 @@ class Lsm:
             clean_data[:,0] = clean_data[:,0]-np.min(clean_data[:,0])
             #copy synched data
             tot_outputs.append(clean_data)
-            tot_inputs.append(spiketrain[inputch].raw_data())
+            tot_inputs.append(stimulus[1].raw_data())
             if(plot_samples == True):
                 Y = self._ts2sig(tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1])
                 for i in range(256):
+                    figure(figure_h.number)
                     subplot(16,16,i)
                     plot(Y[:,i])
 
@@ -269,8 +280,6 @@ class Lsm:
         '''
             load configuration from folder 
         '''
-        self.popsne = np.loadtxt(directory+'popse.txt')
-        self.popsni = np.loadtxt(directory+'popsi.txt')
         self.matrix_learning_rec = np.loadtxt(directory+'conf_matrix_learning_rec.txt')
         self.matrix_learning_pot = np.loadtxt(directory+'conf_matrix_learning_pot.txt')
         self.matrix_programmable_rec = np.loadtxt(directory+'conf_matrix_programmable_rec.txt')
@@ -344,6 +353,8 @@ class Lsm:
         func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
         values = np.linspace(-1,1,256)
         self.decoders = []
+        self.rme = []
+        teach_freq = 1 
 
         for ind,this_g in enumerate(gestures):
             #fixed gesture g
@@ -364,21 +375,26 @@ class Lsm:
                 hold(True)
             #very bad it's plotting inside
             if(plot_all_analog):
-                figure()
+                fig_var = figure()
+                figure_rms = figure()
+            #one stim all trials --> NO VARIABILITY IN THE INPUTs
+            stimulus = self.create_spiketrain_from_matrix(M)
+            self.RC_reset()
             for trial in range(ntrials):
-                inputs, outputs = self.stimulate_reservoir(M,trials=1, plot_samples=plot_all_analog)
+
+                inputs, outputs = self.stimulate_reservoir(stimulus,trials=1, plot_samples=plot_all_analog, figure_h=fig_var)
                 np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[0])
                 np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[0])
 
                 if(learn_real_time == True):
-
                     ac = np.mean(func_avg(self.timev[:,None], inputs[0][:,0][None,:]), axis=1) 
                     ac = ac / np.max(ac)
                     ac = ac[:,None]
-                    teach_sig = np.sin(np.pi*2*3*(self.timev[:,None]/1000.0))*ac
+                    teach_sig = np.sin(np.pi*2*teach_freq*(self.timev[:,None]/1000.0))*ac
                     norm_teach = np.sum(teach_sig**2) 
 
                     # Convert input and output spikes to analog signals
+                    #pdb.set_trace()
                     X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
                     Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
                    
@@ -386,13 +402,18 @@ class Lsm:
                     self.currentAnalogOut = Y
                     self.currentTeach = teach_sig
                     self._realtime_learn (X,Y,teach_sig)
-                    pred_ = self.RC_predict(X,Y)
-                    rme = np.sum((np.hstack((pred_['input'],pred_['output']))-teach_sig)**2, axis=0)/norm_teach
-                    print "RMS in - out", rme
+                    rme =[self._regressor["input"].score(X,teach_sig), self._regressor["output"].score(Y,teach_sig)]
+                    self.rme.append(rme)
+                    print "score in - out", rme
+                    figure(figure_rms.number)
+                    plot(rme,'o')
 
-                if(do_plot_svd ==True):
+                if(do_plot_svd ==True and learn_real_time == False):
+
                     X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
                     Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
+
+                if(do_plot_svd == True):
                     ac=np.mean(Y**2,axis=0)
                     max_pos = np.where(ac == np.max(ac))[0]
                     subplot(3,1,1)
@@ -413,7 +434,7 @@ class Lsm:
         return       
 
     def RC_reset (self):
-        self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)}
+        self.CovMatrix  = {"input":np.zeros([self.Nn,self.Nn]),"output":np.zeros([self.Nn,self.Nn])}
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
         print "RC storage reseted!"
