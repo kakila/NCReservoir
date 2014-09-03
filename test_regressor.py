@@ -26,43 +26,39 @@ import pyNCS
 import sys
 import lsm as L
 
-liquid = L.Lsm() #init liquid state machine 
-# Fake parameters
+liquid = L.Lsm() #init liquid state machine
+prob_n_itter = 0.9;
 t = np.linspace (0,1,1e3)[:,None]
 M = np.random.randn(1,256)
 x = t.dot(M)
 bias = 0.05*np.random.randn(1,256)
 expo = [([1]*11+range(5))*16]
-zeros = np.where(np.random.rand(256,1)>0.5)[0]
-y = t**expo + bias
-y[:,1:10] = np.sin (2*np.pi*3*y[:,1:10]) 
-for i in zeros:
-    y[:,i] = 0
+zeros = np.where(np.random.rand(256,1)>prob_n_itter)[0]
+def sys (x,bias,expo,zeros): 
+    y = x**expo + bias
+    y[:,1:10] = np.sin (2*np.pi*3*y[:,1:10]) 
+    for i in zeros:
+        y[:,i] = 0
+    return y
 
+y = sys (t,bias,expo,zeros)
 K = np.random.randn(256,1)
-#K.sort(axis=0)
 z = y.dot(K[::-1])
 score = []
-for i in xrange(100):
+for i in xrange(500):
     t_ = t + 0.05*np.random.randn(t.shape[0],t.shape[1])
-    x_ = t_.dot(M)  
-    y_ = t_**expo + bias
-    y_[:,1:10] = np.sin (2*np.pi*3*y_[:,1:10])
-    zeros = np.where(np.random.rand(256,1)>0.5)[0]
-    for i in zeros:
-        y_[:,i] = 0
+    x_ = t_.dot(M)
+    zeros = np.where(np.random.rand(256,1)>prob_n_itter)[0]
+    y_ = sys (t_,bias,expo,zeros)
     z_ = y_.dot(K[::-1])
     z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
     liquid._realtime_learn (x_,y_,z_)
     score.append([liquid._regressor["input"].score(x_,z_), liquid._regressor["output"].score(y_,z_)])
 
 t_ = t + 0.05*np.random.randn(t.shape[0],t.shape[1])
-x_ = t_.dot(M)  
-y_ = t_**expo + bias
-y_[:,1:10] = np.sin (2*np.pi*3*y_[:,1:10])
-zeros = np.where(np.random.rand(256,1)>0.5)[0]
-for i in zeros:
-    y_[:,i] = 0
+x_ = t_.dot(M)
+zeros = np.where(np.random.rand(256,1)>1)[0]
+y_ = sys (t_,bias,expo,zeros)
 z_ = y_.dot(K[::-1])
 z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
 

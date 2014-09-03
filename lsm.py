@@ -53,8 +53,8 @@ class Lsm:
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
-        self.timev = []
-        self.func_timebase = []
+        self.timev = []            # time vector for analog signals
+        self.func_timebase = []    # lambda expression for converting spikes to analog
         alpha = np.logspace (-6,3,50)
         self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True), \
                            "output":RidgeCV(alphas=alpha,normalize=True)} # Linear regression with cross-validation
