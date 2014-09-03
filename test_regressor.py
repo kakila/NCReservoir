@@ -1,6 +1,7 @@
 '''
+ Copyright (C) 2014 - Federico Corradi
  Copyright (C) 2014 - Juan Pablo Carbajal
-
+ 
  This progrm is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation; either version 3 of the License, or
@@ -15,13 +16,20 @@
  along with this program. If not, see <http://www.gnu.org/licenses/>.
 '''
 
-# Author: Juan Pablo Carbajal <ajuanpi+dev@gmail.com>
 
-#!/usr/env/python
-from __future__ import division
- 
+############### author ##########
+# federico corradi
+# federico@ini.phys.ethz.ch
+# Juan Pablo Carbajal 
+# ajuanpi+dev@gmail.com
+#
+# Liquid State Machine class mn256r1 
+# ===============================
+
+### ========================= import packages ===============================
+import random
 import numpy as np
-from pylab import *
+import time
 import pyNCS
 import sys
 import lsm as L
@@ -65,4 +73,3 @@ z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])
 zh = liquid.RC_predict (x_,y_)
 clf()
 plot(t,z,t,zh["input"],t,zh["output"])
-
