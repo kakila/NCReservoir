@@ -25,6 +25,7 @@
 #
 # Liquid State Machine class mn256r1 
 # ===============================
+from __future__ import division
 
 ### ========================= import packages ===============================
 import random
@@ -35,6 +36,7 @@ import matplotlib
 from pylab import *
 from sklearn.linear_model import RidgeCV
 from sklearn import metrics
+
 import pdb
 
 class Lsm:
@@ -51,6 +53,7 @@ class Lsm:
         self.matrix_programmable_exc_inh = np.zeros(Nn2)
         # end resources
         # resources for Reservoir Computing
+        self.teach_generator = self.orth_signal # function to generate teach signals
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
@@ -354,7 +357,6 @@ class Lsm:
         values = np.linspace(-1,1,256)
         self.decoders = []
         self.rme = []
-        teach_freq = 1 
 
         for ind,this_g in enumerate(gestures):
             #fixed gesture g
@@ -387,12 +389,8 @@ class Lsm:
                 np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[0])
 
                 if(learn_real_time == True):
-                    ac = np.mean(func_avg(self.timev[:,None], inputs[0][:,0][None,:]), axis=1) 
-                    ac = ac / np.max(ac)
-                    ac = ac[:,None]
-                    teach_sig = np.sin(np.pi*2*teach_freq*(self.timev[:,None]/1000.0))*ac
-                    norm_teach = np.sum(teach_sig**2) 
-
+                    teach_sig = self.teach_generator (inputs[0])
+                    
                     # Convert input and output spikes to analog signals
                     #pdb.set_trace()
                     X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
@@ -480,8 +478,7 @@ class Lsm:
         Y = np.zeros([nT,self.Nn])
         for i in xrange(nS):
             idx = np.where(n_id == nid[i])[0]
-            for j in idx:
-                Y[:,i] += self.func_timebase(self.timev,ts[j]);
+            Y[:,i] = self.func_timebase(self.timev,ts[idx]);
         return Y
 
     def compute_decoders(self, values, Y):
@@ -495,3 +492,18 @@ class Lsm:
         ginv=np.linalg.pinv(gamma)
         decoders=np.dot(ginv,upsilon)
         return decoders
+    
+    def orth_signal (self,x, atol=1e-13, rtol=0):
+        '''
+        Returns signal orthogonal to input ensemble.
+        x -> input singal [n_samples, n_neurons]
+        '''
+        t = np.linspace(0,1,x.shape[0])[:,None]
+        f = arange(x.shape[1])/x.shape[1]
+        xt = np.sum(sin(2*np.pi*f*5*t)/(f+1),axis=1)
+        w = RidgeCV(np.logspace(-6,3,50))
+        w.fit(x,xt)
+        xt = xt - w.predict(x)
+        
+        #pdb.set_trace()
+        return xt

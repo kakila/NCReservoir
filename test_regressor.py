@@ -53,7 +53,7 @@ y = sys (t,bias,expo,zeros)
 K = np.random.randn(256,1)
 z = y.dot(K[::-1])
 score = []
-for i in xrange(500):
+for i in xrange(100):
     t_ = t + 0.05*np.random.randn(t.shape[0],t.shape[1])
     x_ = t_.dot(M)
     zeros = np.where(np.random.rand(256,1)>prob_n_itter)[0]
