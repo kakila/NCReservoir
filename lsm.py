@@ -428,8 +428,6 @@ class Lsm:
         '''
         Regression of teach_sig using inputs (x) and outputs (y).
         '''
-        x = x - np.mean(x,axis=0) 
-        y = y - np.mean(y,axis=0)
         nT,Nn = x.shape
         # Covariance matrix
         Cx = np.dot (x.T, x) / nT # input

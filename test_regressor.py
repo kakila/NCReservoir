@@ -33,21 +33,30 @@ M = np.random.randn(1,256)
 x = t.dot(M)
 bias = 0.1*np.random.randn(1,256)
 expo = [([1]*11+range(5))*16]
+zeros = np.where(np.random.rand(256,1)>1)[0]
 y = t**expo + bias 
+for i in zeros:
+    y[:,i] = 0
+
 K = np.random.randn(256,1)
-K.sort(axis=0)
+#K.sort(axis=0)
 z = y.dot(K[::-1])
+err = []
 for i in xrange(100):
     t_ = t + 0.1*np.random.randn(t.shape[0],t.shape[1])
     x_ = t_.dot(M)  
     y_ = t_**expo + bias 
+    for i in zeros:
+        y[:,i] = 0
     z_ = y_.dot(K[::-1])
     z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
     liquid._realtime_learn (x_,y_,z_)
 
 t_ = t + 0.1*np.random.randn(t.shape[0],t.shape[1])
 x_ = t_.dot(M)  
-y_ = t_**expo + bias 
+y_ = t_**expo + bias
+for i in zeros:
+    y[:,i] = 0
 z_ = y_.dot(K[::-1])
 z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
 
