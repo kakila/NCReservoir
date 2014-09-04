@@ -36,8 +36,8 @@ import matplotlib
 from pylab import *
 from sklearn.linear_model import RidgeCV
 from sklearn import metrics
-
 import pdb
+import multiprocessing as mpi
 
 class Lsm:
     def __init__(self, population=None,  cee=0.5, cii=0.3):
@@ -53,12 +53,12 @@ class Lsm:
         self.matrix_programmable_exc_inh = np.zeros(Nn2)
         # end resources
         # resources for Reservoir Computing
-        self.teach_generator = self.orth_signal # function to generate teach signals
+        self.teach_generator = orth_signal # function to generate teach signals
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
-        self.timev = []            # time vector for analog signals
-        self.func_timebase = []    # lambda expression for converting spikes to analog
+        self.timev = []
+        self.func_timebase = []
         alpha = np.logspace (-6,3,50)
         self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True), \
                            "output":RidgeCV(alphas=alpha,normalize=True)} # Linear regression with cross-validation
@@ -67,6 +67,8 @@ class Lsm:
         self.cee = cee
         self.cii = cii
         self.rcn = population
+        #parallel processing
+        self.p = mpi.Pool(processes=4)
         if population:
             self.setup = population.setup
             self.setup.chips['mn256r1'].load_parameters('biases/biases_default.biases')
@@ -169,12 +171,7 @@ class Lsm:
         '''
         
         nR = len(rates) # Number of rates
-#        if not nR == len(G):
-#            # TODO: Raise an error
-#            print "Rates and G must have the same length."
-#            return 
-        
-        # Square
+
         x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
         t   = np.linspace(0,1,nT,endpoint=False)
         V   = np.array([r(t) for r in rates])
@@ -185,7 +182,7 @@ class Lsm:
 
         return M
 
-    def create_spiketrain_from_matrix(self, rate_matrix, max_freq= 1000, min_freq = 350, duration = 1000, nsteps = 30, neu_sync=10, delay_sync = 500, duration_sync = 200, freq_sync = 600):
+    def create_spiketrain_from_matrix(self, M, max_freq= 1000, min_freq = 350, duration = 1000, nsteps = 30, neu_sync=10, delay_sync = 500, duration_sync = 200, freq_sync = 600):
         '''
         create stimulus from rate matrix 
         it adds the sync neu as well
@@ -193,7 +190,6 @@ class Lsm:
         vsyn = 4
         somach = self.rcn.soma.channel
         inputch = 1
-        M = rate_matrix
         nsyn, nsteps = np.shape(M)
 
         #we pick a random projection
@@ -226,7 +222,7 @@ class Lsm:
 
         return stimulus
 
-    def stimulate_reservoir(self, stimulus, neu_sync = 10,  trials=5, plot_samples = False, figure_h=None):
+    def stimulate_reservoir(self, stimulus, neu_sync = 10,  trials=5):
         '''
         stimulate reservoir via virtual input synapses
         nsteps -> time steps to be considered in a duration = duration
@@ -252,12 +248,12 @@ class Lsm:
             #copy synched data
             tot_outputs.append(clean_data)
             tot_inputs.append(stimulus[1].raw_data())
-            if(plot_samples == True):
-                Y = self._ts2sig(tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1])
-                for i in range(256):
-                    figure(figure_h.number)
-                    subplot(16,16,i)
-                    plot(Y[:,i])
+            #if(plot_samples == True):
+            #    Y = self._ts2sig(tot_outputs[this_stim][:,0], tot_outputs[this_stim][:,1])
+            #    for i in range(256):
+            #        figure(figure_h.number)
+            #        subplot(16,16,i)
+            #        plot(Y[:,i])
 
         return tot_inputs, tot_outputs
 
@@ -333,103 +329,37 @@ class Lsm:
                 mean_rate[i,b] = len(index_neu[0])*1000.0/(bins[b+1]-bins[b]) # time unit: ms
         return mean_rate
 
-    def poke_and_record(self, c=0.3, nsteps=30, num_gestures= 1, ntrials = 4, do_plot_svd = False, learn_real_time = False, plot_all_analog=False):
+    def create_stimuli_matrix(self, dim, gesture, nsteps=30): 
+        '''
+        generates M normalized stimuli Matrix
+        '''
+
+        rates = []
+        func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
+        #fixed gesture g
+        for f  in gesture['freq']:
+            rates.append(lambda t,w=f: 0.5+0.5*np.sin(2*np.pi*w*t))
+
+        # Multiple spatial distribution
+        G = []
+        for width,pos in zip(gesture['width'], gesture['centers']):
+            G.append(lambda x,y,d=width,w=pos: np.exp ((-(x-w[0])**2 + (y-w[1])**2)/(np.sum(width)**2)))
+
+        M = self._generate_input_mean_rates(G, rates, nsteps, nx=dim, ny=dim) 
+        return M
+ 
+    def RC_poke(self, stimulus ):
         '''
         c -> random connectivity from stimuli to reservoir
         nsteps -> timesteps
         num_gestures -> stuff to classify generated
         ntrials -> number of trials per gesture
         '''
-        dim = np.round(np.sqrt(len(self.rcn.synapses['virtual_exc'].addr)*c))
-        gestures = []
-        for this_gesture in range(num_gestures):
-            freqs = np.random.randint(7,size=3).tolist()   
-            centers = np.random.random((3,2)).tolist()
-            width = np.random.random((1,3)).tolist()
-            gestures.append([{'freq': freqs, 'centers': centers, 'width': width}])
 
-        import json
-        json.dump(gestures, open("lsm/gestures.txt",'w'))
-        #gestures = [ {'freq':[1,5,7], 'centers': [(0.0,-0.5),(0.8,0.8),(-0.8,0.3)], 'width': [1.2,0.5,1.3]} ]
-        rates = []
+        inputs, outputs = self.stimulate_reservoir(stimulus,trials=1)
 
-        func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
-        values = np.linspace(-1,1,256)
-        self.decoders = []
-        self.rme = []
-
-        for ind,this_g in enumerate(gestures):
-            #fixed gesture g
-            for f  in this_g[0]['freq']:
-                rates.append(lambda t,w=f: 0.5+0.5*np.sin(2*np.pi*w*t))
-
-            # Multiple spatial distribution
-            G = []
-            for width,pos in zip(this_g[0]['width'], this_g[0]['centers']):
-                G.append(lambda x,y,d=width,w=pos: np.exp ((-(x-w[0])**2 + (y-w[1])**2)/(np.sum(width)**2)))
-
-            M = self._generate_input_mean_rates(G, rates, nsteps, nx=dim, ny=dim) 
-
-            if( do_plot_svd == True):
-                print "plotting..."
-                ion()
-                figure()    
-                hold(True)
-            #very bad it's plotting inside
-            if(plot_all_analog):
-                fig_var = figure()
-                figure_rms = figure()
-            #one stim all trials --> NO VARIABILITY IN THE INPUTs
-            stimulus = self.create_spiketrain_from_matrix(M)
-            self.RC_reset()
-            for trial in range(ntrials):
-
-                inputs, outputs = self.stimulate_reservoir(stimulus,trials=1, plot_samples=plot_all_analog, figure_h=fig_var)
-                np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[0])
-                np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[0])
-
-                if(learn_real_time == True):
-                    teach_sig = self.teach_generator (inputs[0])
-                    
-                    # Convert input and output spikes to analog signals
-                    #pdb.set_trace()
-                    X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
-                    Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
-                   
-                    self.currentAnalogIn = X
-                    self.currentAnalogOut = Y
-                    self.currentTeach = teach_sig
-                    self._realtime_learn (X,Y,teach_sig)
-                    rme =[self._regressor["input"].score(X,teach_sig), self._regressor["output"].score(Y,teach_sig)]
-                    self.rme.append(rme)
-                    print "score in - out", rme
-                    figure(figure_rms.number)
-                    plot(rme,'o')
-
-                if(do_plot_svd ==True and learn_real_time == False):
-
-                    X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
-                    Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
-
-                if(do_plot_svd == True):
-                    ac=np.mean(Y**2,axis=0)
-                    max_pos = np.where(ac == np.max(ac))[0]
-                    subplot(3,1,1)
-                    plot(X[:,125])
-                    subplot(3,1,2)
-                    plot(Y[:,max_pos])
-                    subplot(3,1,3)
-                    CO = np.dot(Y.T,Y)
-                    CI = np.dot(X.T,X)
-                    si = np.linalg.svd(CI, full_matrices=True, compute_uv=False)
-                    so = np.linalg.svd(CO, full_matrices=True, compute_uv=False)
-                    semilogy(so/so[0], 'bo-', label="outputs")
-                    semilogy(si/si[0], 'go-', label="inputs")
-                    legend(loc="best")
-                    #try decoders
-                    decoders = self.compute_decoders(values, Y)
-                    self.decoders.append(decoders)
-        return       
+        return inputs, outputs
+            
 
     def RC_reset (self):
         self.CovMatrix  = {"input":np.zeros([self.Nn,self.Nn]),"output":np.zeros([self.Nn,self.Nn])}
@@ -467,6 +397,11 @@ class Lsm:
         self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
 
+    def _func_timebase(self, x):
+        '''
+        '''
+        return np.exp((-(self.timev[:,None]-x)**2)/(2*50**2))
+
     def _ts2sig (self, ts, n_id):
         '''
         ts - > time stamp of spikes
@@ -476,34 +411,134 @@ class Lsm:
         nid = np.unique(n_id)
         nS = len(nid)
         Y = np.zeros([nT,self.Nn])
+        #pdb.set_trace()
+        tot_exponent = []
         for i in xrange(nS):
             idx = np.where(n_id == nid[i])[0]
-            Y[:,i] = self.func_timebase(self.timev,ts[idx]);
+            #tot_exponent.append([this_exp])
+            Y[:,i] = np.sum(self._func_timebase(ts[idx]), axis=1)
+            #Y =  self.p.map(np.exp, tot_exponent)
         return Y
 
-    def compute_decoders(self, values, Y):
+    #characterize neurons responses
+    def measure_phy_neurons(self, max_freq= 1500, min_freq = 350, duration = 1000, nsteps = 5):
         '''
-        solve decoders for inputs
-        values has dim 256
-        Y has dim nT,256
+        ideally we would like tanh
         '''
-        gamma=np.dot(Y, Y.T) #I diagonal noise add I = eye(len(gamma))
-        upsilon=np.dot(Y, values) #associated function 
-        ginv=np.linalg.pinv(gamma)
-        decoders=np.dot(ginv,upsilon)
-        return decoders
-    
-    def orth_signal (self,x, atol=1e-13, rtol=0):
-        '''
-        Returns signal orthogonal to input ensemble.
-        x -> input singal [n_samples, n_neurons]
-        '''
-        t = np.linspace(0,1,x.shape[0])[:,None]
-        f = arange(x.shape[1])/x.shape[1]
-        xt = np.sum(sin(2*np.pi*f*5*t)/(f+1),axis=1)
-        w = RidgeCV(np.logspace(-6,3,50))
-        w.fit(x,xt)
-        xt = xt - w.predict(x)
+        vsyn = 4
+        somach = self.rcn.soma.channel
+        inputch = 1
+        neu_sync = 10
+        freq_sync = 300
+        duration_sync = 100
+        #save config
+        self.save_config()
+        #reset connection matrix
+        m_z = np.zeros([256,256])
+        self.setup.mapper._program_onchip_plastic_connections(m_z)
+        self.setup.mapper._program_onchip_programmable_connections(m_z)
         
-        #pdb.set_trace()
-        return xt
+        #regular stimulation for neurons 
+        index_neu = self.rcn.synapses['virtual_exc'].addr['neu'] == neu_sync           
+        syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
+        tot_spike_phases = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
+        syn = self.rcn.synapses['virtual_exc']
+
+        freqs = np.linspace(min_freq, max_freq, nsteps)
+        stim_time = float(duration)/nsteps
+        for i in range(nsteps):
+            t_start = (stim_time*i)+duration_sync
+            print t_start
+            spiketrain = syn.spiketrains_poisson(freqs[i], duration=stim_time, t_start = (stim_time * i)+duration_sync)
+            tot_spike_phases = pyNCS.pyST.merge_sequencers(spiketrain, tot_spike_phases)
+
+
+        out = self.setup.stimulate(tot_spike_phases,send_reset_event=False, duration=(stim_time*nsteps)+duration_sync+500) 
+        out = out[somach]
+        raw_data = out.raw_data()
+        sync_index = raw_data[:,1] == neu_sync
+        start_time = np.min(raw_data[sync_index,0])
+        index_after_sync = raw_data[:,0] > start_time
+        clean_data = raw_data[index_after_sync,:]
+        clean_data[:,0] = clean_data[:,0]- np.min(clean_data[:,0])
+
+        firing_rates = np.zeros([self.Nn,nsteps]) 
+        figure()
+        for i in range(nsteps):
+            firing_rates[:,i] = self.mean_neu_firing_s(clean_data, np.linspace(0,self.Nn-1,self.Nn), [ (i*stim_time), ( stim_time*(i+1)) ]) 
+        for i in range(256):
+            plot(freqs, firing_rates[i,:], 'o-') 
+        xlabel(r'$\nu_{in}$ [Hz]')
+        ylabel(r'$\nu_{out}$ [Hz]') 
+
+        return
+
+    def mean_neu_firing_s(self, spike_train, n_neurons, simulation_time):
+        mean_rate   = np.zeros([len(n_neurons)])
+        for i in range(len(n_neurons)):
+            index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] > simulation_time[0] , spike_train[:,0] < simulation_time[1] )) )
+            mean_rate[i] = len(index_neu[0])*1000.0/(simulation_time[1]-simulation_time[0]) # time unit: ms
+        return mean_rate
+
+def orth_signal (x, atol=1e-13, rtol=0):
+    '''
+    Returns signal orthogonal to input ensemble.
+    x -> input singal [n_samples, n_neurons]
+    '''
+    t = np.linspace(0,1,x.shape[0])[:,None]
+    f = arange(x.shape[1])/x.shape[1]
+    xt = np.sum(sin(2*np.pi*f*3*t)/(f+1),axis=1)
+    w = RidgeCV(np.logspace(-6,3,50))
+    w.fit(x,xt)
+    xt = xt - w.predict(x)
+    #pdb.set_trace()
+    return xt
+
+'''        if(save_data):
+
+                np.savetxt("lsm/inputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", inputs[0])
+                np.savetxt("lsm/outputs_gesture_"+str(ind)+"_trial_"+str(trial)+".txt", outputs[0])
+
+            if(learn_real_time == True):
+
+                ac = np.mean(func_avg(self.timev[:,None], inputs[0][:,0][None,:]), axis=1) 
+                ac = ac / np.max(ac)
+                ac = ac[:,None]
+
+                # Convert input and output spikes to analog signals
+                #pdb.set_trace()
+                X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
+                Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
+                teach_sig = self.teach_generator(X)[:,None] * ac
+               
+                self.currentAnalogIn = X
+                self.currentAnalogOut = Y
+                self.currentTeach = teach_sig
+                self._realtime_learn (X,Y,teach_sig)
+                rme =[self._regressor["input"].score(X,teach_sig), self._regressor["output"].score(Y,teach_sig)]
+                self.rme.append(rme)
+                print "score in - out", rme
+                figure(figure_rms.number)
+                plot(rme,'o')
+
+            if(do_plot_svd ==True and learn_real_time == False):
+
+                X = self._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
+                Y = self._ts2sig(outputs[0][:,0], outputs[0][:,1])
+
+            if(do_plot_svd == True):
+                ac=np.mean(Y**2,axis=0)
+                max_pos = np.where(ac == np.max(ac))[0]
+                subplot(3,1,1)
+                plot(X[:,125])
+                subplot(3,1,2)
+                plot(Y[:,max_pos])
+                subplot(3,1,3)
+                CO = np.dot(Y.T,Y)
+                CI = np.dot(X.T,X)
+                si = np.linalg.svd(CI, full_matrices=True, compute_uv=False)
+                so = np.linalg.svd(CO, full_matrices=True, compute_uv=False)
+                semilogy(so/so[0], 'bo-', label="outputs")
+                semilogy(si/si[0], 'go-', label="inputs")
+                legend(loc="best")
+'''
