@@ -30,61 +30,118 @@ from pylab import *
 import pyNCS
 import sys
 import matplotlib
+import lsm as L
 
 sys.path.append('../api/lsm/')
 
-#parameters and actions 
-n_steps = 10
-do_figs_encoding = False
+######################################
+# Configure chip
+try:
+  print "Chip is configured: " is_configured
+except NameError:
+  print "Configuring chip"
+  is_configured = False
+else:
+  print "Chip is configured: " is_configured
 
-#populations divisible by 2 for encoders
-neuron_ids = np.linspace(0,255,256)
-npops = len(neuron_ids)
+if is_configured:
+  #populations divisible by 2 for encoders
+  neuron_ids = np.linspace(0,255,256)
+  npops      = len(neuron_ids)
 
-#setup
-prefix='../'
-setuptype = '../setupfiles/mc_final_mn256r1.xml'
-setupfile = '../setupfiles/final_mn256r1_retina_monster.xml'
-nsetup = pyNCS.NeuroSetup(setuptype, setupfile, prefix=prefix)
-chip = nsetup.chips['mn256r1']
-nsetup.mapper._init_fpga_mapper()
-chip.configurator._set_multiplexer(0)
+  #setup
+  prefix    = '../'
+  setuptype = '../setupfiles/mc_final_mn256r1.xml'
+  setupfile = '../setupfiles/final_mn256r1_retina_monster.xml'
+  nsetup    = pyNCS.NeuroSetup(setuptype, setupfile, prefix=prefix)
+  nsetup.mapper._init_fpga_mapper()
 
-#populate neurons
-rcnpop = pyNCS.Population('neurons', 'for fun') 
-rcnpop.populate_by_id(nsetup,'mn256r1','excitatory', neuron_ids)
+  chip      = nsetup.chips['mn256r1']
 
-#init nef on neuromorphic chips
-import lsm as L
-liquid = L.Lsm(rcnpop, cee=0.8, cii=0.5) #init liquid state machine
+  chip.configurator._set_multiplexer(0)
 
-nsetup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')
-c = 0.3
-dim = np.round(np.sqrt(len(liquid.rcn.synapses['virtual_exc'].addr)*c))
-### generate gestures
-num_gestures = 1
+  #populate neurons
+  rcnpop = pyNCS.Population('neurons', 'for fun') 
+  rcnpop.populate_by_id(nsetup,'mn256r1','excitatory', neuron_ids)
+
+  chip.load_parameters('biases/biases_reservoir.biases')
+
+  #init liquid state machine
+  liquid = L.Lsm(rcnpop, cee=0.8, cii=0.5)
+
+  c = 0.3
+  dim = np.round(np.sqrt(len(liquid.rcn.synapses['virtual_exc'].addr)*c))
+  
+  # do config only once
+  is_configured = True
+# End chip configuration
+######################################
+
+######################################
+# Generate gestures parameters
+num_gestures = 1 # Number of gestures
+ntrials      = 1 # Number of repetitions of each gesture
+
 gestures = []
 for this_gesture in range(num_gestures):
-    freqs = np.random.randint(7,size=3).tolist()   
+    freqs   = np.random.randint(7,size=3).tolist()   # in Hz
     centers = np.random.random((3,2)).tolist()
-    width = np.random.random((1,3)).tolist()
+    width   = np.random.random((1,3)).tolist()
     gestures.append({'freq': freqs, 'centers': centers, 'width': width})
     
 import json
 json.dump(gestures, open("lsm/gestures.txt",'w'))
+######################################
 
-scores = []
-func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
-ntrials = 1
+######################################
+# Generate mean rate signals representing gestures
+rates = [[]*len(gestures)]
+G     = [[]*len(gestures)]
+for ind,this_g in enumerate(gestures):
+  for f  in this_g['freq']:
+      rates[ind].append(lambda t,w=f: 0.5+0.5*np.sin(2*np.pi*w*t*1e-3)) # time in ms
+
+  # Multiple spatial distribution
+  for width,pos in zip(this_g['width'], this_g['centers']):
+      G[ind].append(lambda x,y,d=width,w=pos: np.exp ((-(x-w[0])**2 + (y-w[1])**2)/(np.sum(width)**2)))
+
+# Number of time steps to sample the mean rates
+nsteps = 50
+######################################
+
+# Function to calculate region of activity
+func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2)) # time in ms
+
+# Handle to figure to plot while learning
 fig_h = figure()
 ion()
+
+# Store scores of RC
+scores = []
+# Stimulation parameters
+duration   = 1000
+delay_sync = 500
+
+# Time vector for analog signals
+Fs    = 100/1e3 # Sampling frequency (in kHz)
+T     = duration+delay_sync+1000
+nT    = np.round (Fs*T)
+timev = np.linspace(0,T,nT)
+
+#Conversion from spikes to analog
+membrane = lambda t,ts: np.atleast2d(np.exp((-(t-ts)**2)/(2*50**2)))
 
 liquid.RC_reset()
 for ind,this_g in enumerate(gestures):
 
-    M = liquid.create_stimuli_matrix(dim, this_g)
-    #one stim all trials --> NO VARIABILITY IN THE INPUTs
-    stimulus = liquid.create_spiketrain_from_matrix(M)
+    M = liquid.create_stimuli_matrix(G[ind], rates[ind], nsteps)
+    #one stimiluation for  all trials --> NO VARIABILITY IN THE INPUTs
+    stimulus = liquid.create_spiketrain_from_matrix(M, \
+                                                    duration=duration, \
+                                                    delay_sync=delay_sync)
+    
+    #generate teaching signal associated with the Gesture
+    gesture_teach = rates[ind](timev)
     
     for this_t in xrange(ntrials): 
     
@@ -92,13 +149,17 @@ for ind,this_g in enumerate(gestures):
         inputs, outputs = liquid.RC_poke(stimulus)
 
         #if(learn_real_time == True):
-        ac = np.mean(func_avg(liquid.timev[:,None], inputs[0][:,0][None,:]), axis=1) 
+        # Calculate activity of current inputs.
+        # As of now the reservoir can only give answers during activity
+        ac = np.mean(func_avg(timev[:,None], inputs[0][:,0][None,:]), axis=1) 
         ac = ac / np.max(ac)
         ac = ac[:,None]
+        
         # Convert input and output spikes to analog signals
-        X = liquid._ts2sig(inputs[0][:,0], np.floor(inputs[0][:,1]))
-        Y = liquid._ts2sig(outputs[0][:,0], outputs[0][:,1])
-        teach_sig = liquid.teach_generator(X* ac)[:,None] * ac **4
+        X = L.ts2sig(membrane, timev, inputs[0][:,0], np.floor(inputs[0][:,1]))
+        Y = L.ts2sig(membrane, timev, outputs[0][:,0], outputs[0][:,1])
+
+        teach_sig = gesture_teach * ac**4 # Windowed by activity
 
         #learn
         liquid._realtime_learn (X,Y,teach_sig)
@@ -126,7 +187,9 @@ legend(loc='best')
 figure()
 zh = liquid.RC_predict (X,Y)
 clf()
-plot(liquid.timev,teach_sig,liquid.timev,zh["input"],liquid.timev,zh["output"],label="ref, input, output")
+plot(timev,teach_sig, label="ref", \
+     timev,zh["input"],label="input", \
+     timev,zh["output"],label="output")
 legend(loc='best')
 
 

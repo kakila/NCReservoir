@@ -150,7 +150,7 @@ class Lsm:
                     else:
                         self.matrix_programmable_w[post,pre] = w[0]
 
-    def _generate_input_mean_rates (self,G, rates, nT, nx=16, ny=16) :
+    def create_stimuli_matrix (self,G, rates, nT, nx=16, ny=16) :
         '''
         Generates a matrix the mean rates of the input neurons defined in
         nT time intervals.
@@ -182,7 +182,7 @@ class Lsm:
 
         return M
 
-    def create_spiketrain_from_matrix(self, M, max_freq= 1000, min_freq = 350, duration = 1000, nsteps = 30, neu_sync=10, delay_sync = 500, duration_sync = 200, freq_sync = 600):
+    def create_spiketrain_from_matrix(self, M, max_freq= 1000, min_freq = 350, nsteps = 30, neu_sync=10, duration = 1000, delay_sync = 500, duration_sync = 200, freq_sync = 600):
         '''
         create stimulus from rate matrix 
         it adds the sync neu as well
@@ -210,12 +210,6 @@ class Lsm:
         syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
         sync_spikes = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
 
-        self.timev = np.linspace(0,duration+delay_sync+1000,300)
-        self.func_timebase = lambda t,ts: np.exp((-(t-ts)**2)/(2*50**2))
-        
-        #create mean rates basis
-        #if(plot_samples == True):
-        #    figure()
         spiketrain = syn.spiketrains_inh_poisson(new_value,timebins+delay_sync)
         #spiketrain = syn.spiketrains_regular(min_freq*2, duration=duration+delay_sync)
         stimulus = pyNCS.pyST.merge_sequencers(sync_spikes, spiketrain)
@@ -325,30 +319,16 @@ class Lsm:
         for b in range(nbins-1):
             #simulation_time = [np.min(spike_train[0][:]), np.max(spike_train[0][:])]
             for i in range(len(n_neurons)):
-                index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] >     bins[b] , spike_train[:,0] < bins[b+1] )) )
+                index_neu = np.where( \
+                              np.logical_and(spike_train[:,1] == n_neurons[i], \
+                                     np.logical_and(spike_train[:,0] > bins[b], \
+                                            spike_train[:,0] < bins[b+1] ) \
+                                            ) \
+                                    )
                 mean_rate[i,b] = len(index_neu[0])*1000.0/(bins[b+1]-bins[b]) # time unit: ms
         return mean_rate
 
-    def create_stimuli_matrix(self, dim, gesture, nsteps=30): 
-        '''
-        generates M normalized stimuli Matrix
-        '''
-
-        rates = []
-        func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2))
-        #fixed gesture g
-        for f  in gesture['freq']:
-            rates.append(lambda t,w=f: 0.5+0.5*np.sin(2*np.pi*w*t))
-
-        # Multiple spatial distribution
-        G = []
-        for width,pos in zip(gesture['width'], gesture['centers']):
-            G.append(lambda x,y,d=width,w=pos: np.exp ((-(x-w[0])**2 + (y-w[1])**2)/(np.sum(width)**2)))
-
-        M = self._generate_input_mean_rates(G, rates, nsteps, nx=dim, ny=dim) 
-        return M
- 
-    def RC_poke(self, stimulus ):
+    def RC_poke(self, stimulus):
         '''
         c -> random connectivity from stimuli to reservoir
         nsteps -> timesteps
@@ -396,29 +376,6 @@ class Lsm:
         self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
         self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
-
-    def _func_timebase(self, x):
-        '''
-        '''
-        return np.exp((-(self.timev[:,None]-x)**2)/(2*50**2))
-
-    def _ts2sig (self, ts, n_id):
-        '''
-        ts - > time stamp of spikes
-        n_id -> neuron id 
-        '''
-        nT = len(self.timev)
-        nid = np.unique(n_id)
-        nS = len(nid)
-        Y = np.zeros([nT,self.Nn])
-        #pdb.set_trace()
-        tot_exponent = []
-        for i in xrange(nS):
-            idx = np.where(n_id == nid[i])[0]
-            #tot_exponent.append([this_exp])
-            Y[:,i] = np.sum(self._func_timebase(ts[idx]), axis=1)
-            #Y =  self.p.map(np.exp, tot_exponent)
-        return Y
 
     #characterize neurons responses
     def measure_phy_neurons(self, max_freq= 1500, min_freq = 350, duration = 1000, nsteps = 5):
@@ -479,6 +436,25 @@ class Lsm:
             index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] > simulation_time[0] , spike_train[:,0] < simulation_time[1] )) )
             mean_rate[i] = len(index_neu[0])*1000.0/(simulation_time[1]-simulation_time[0]) # time unit: ms
         return mean_rate
+
+def ts2sig (t, func, ts, n_id):
+    '''
+    t    -> time vector
+    func -> time basis f(t,ts)
+    ts - > time stamp of spikes
+    n_id -> neuron id 
+    '''
+    nT = len(t)
+    nid = np.unique(n_id)
+    nS = len(nid)
+    Y = np.zeros([nT,self.Nn])
+    tot_exponent = []
+    for i in xrange(nS):
+        idx = np.where(n_id == nid[i])[0]
+        #tot_exponent.append([this_exp])
+        Y[:,i] = np.sum(func(ts[idx]), axis=1)
+        #Y =  self.p.map(np.exp, tot_exponent)
+    return Y
 
 def orth_signal (x, atol=1e-13, rtol=0):
     '''
