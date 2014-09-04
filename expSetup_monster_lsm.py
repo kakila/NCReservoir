@@ -30,21 +30,22 @@ from pylab import *
 import pyNCS
 import sys
 import matplotlib
+sys.path.append('../api/lsm/')
 import lsm as L
 
-sys.path.append('../api/lsm/')
+
 
 ######################################
 # Configure chip
 try:
-  print "Chip is configured: " is_configured
+  is_configured
 except NameError:
   print "Configuring chip"
   is_configured = False
 else:
-  print "Chip is configured: " is_configured
+  print "Chip is configured: ", is_configured
 
-if is_configured:
+if (is_configured == False):
   #populations divisible by 2 for encoders
   neuron_ids = np.linspace(0,255,256)
   npops      = len(neuron_ids)
@@ -80,7 +81,7 @@ if is_configured:
 ######################################
 # Generate gestures parameters
 num_gestures = 1 # Number of gestures
-ntrials      = 1 # Number of repetitions of each gesture
+ntrials      = 3 # Number of repetitions of each gesture
 
 gestures = []
 for this_gesture in range(num_gestures):
@@ -114,6 +115,7 @@ func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2)) # time in ms
 
 # Handle to figure to plot while learning
 fig_h = figure()
+fig_i = figure()
 ion()
 
 # Store scores of RC
@@ -129,7 +131,7 @@ nT    = np.round (Fs*T)
 timev = np.linspace(0,T,nT)
 
 #Conversion from spikes to analog
-membrane = lambda t,ts: np.atleast2d(np.exp((-(t-ts)**2)/(2*50**2)))
+membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*50**2)))
 
 liquid.RC_reset()
 for ind,this_g in enumerate(gestures):
@@ -141,42 +143,52 @@ for ind,this_g in enumerate(gestures):
                                                     delay_sync=delay_sync)
     
     #generate teaching signal associated with the Gesture
-    gesture_teach = rates[ind](timev)
+    gesture_teach = rates[0][ind](timev)
     
     for this_t in xrange(ntrials): 
-    
+        nsetup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')    
         #stimulate
         inputs, outputs = liquid.RC_poke(stimulus)
 
         #if(learn_real_time == True):
         # Calculate activity of current inputs.
         # As of now the reservoir can only give answers during activity
-        ac = np.mean(func_avg(timev[:,None], inputs[0][:,0][None,:]), axis=1) 
+        ac = np.mean(func_avg(timev[:,None], outputs[0][:,0][None,:]), axis=1) 
         ac = ac / np.max(ac)
         ac = ac[:,None]
         
         # Convert input and output spikes to analog signals
-        X = L.ts2sig(membrane, timev, inputs[0][:,0], np.floor(inputs[0][:,1]))
-        Y = L.ts2sig(membrane, timev, outputs[0][:,0], outputs[0][:,1])
+        X = L.ts2sig(timev, membrane, inputs[0][:,0], np.floor(inputs[0][:,1]))
+        Y = L.ts2sig(timev, membrane, outputs[0][:,0], outputs[0][:,1])
+        #if(this_t >0):
+        #    print "X vs Vpre", np.sum(np.abs(Xprev-X))
+        #Xprev = X 
 
-        teach_sig = gesture_teach * ac**4 # Windowed by activity
+        teach_sig = gesture_teach * ac.T**4 # Windowed by activity
 
         #learn
-        liquid._realtime_learn (X,Y,teach_sig)
+        liquid._realtime_learn (X,Y,teach_sig.T)
 
         #evaluate
-        this_score = [liquid._regressor["input"].score(X,teach_sig), \
-                     liquid._regressor["output"].score(Y,teach_sig)]
+        this_score = [liquid._regressor["input"].score(X,teach_sig.T), \
+                     liquid._regressor["output"].score(Y,teach_sig.T)]
         scores.append(this_score)
 
         print "we are scoring..."
         print this_score
-        print "we are plotting"
-        figure(fig_h.number)
-        for i in range(256):
-            subplot(16,16,i)
-            plot(Y[:,i])
-            axis('off')
+        print "we are plotting outputs"
+        #figure(fig_h.number)
+        #for i in range(256):
+        #    subplot(16,16,i)
+        #    plot(Y[:,i])
+        #    axis('off')
+        #print "we are plotting inputs"
+        #figure(fig_i.number)
+        #for i in range(256):
+        #    subplot(16,16,i)
+        #    plot(X[:,i])
+        #    axis('off')
+
             
 
 figure()
@@ -187,9 +199,9 @@ legend(loc='best')
 figure()
 zh = liquid.RC_predict (X,Y)
 clf()
-plot(timev,teach_sig, label="ref", \
-     timev,zh["input"],label="input", \
-     timev,zh["output"],label="output")
+plot(timev,teach_sig.T,label='teach signal')
+plot(timev,zh["input"], label='input')
+plot(timev,zh["output"], label='output')
 legend(loc='best')
 
 
