@@ -36,6 +36,7 @@ import matplotlib
 from pylab import *
 from sklearn.linear_model import RidgeCV
 from sklearn import metrics
+
 import pdb
 import multiprocessing as mpi
 
@@ -57,11 +58,12 @@ class Lsm:
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
+        self.n_updates = 0.0 #prevent overflow
         self.timev = []
         self.func_timebase = []
-        alpha = np.logspace (-6,3,50)
-        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True), \
-                           "output":RidgeCV(alphas=alpha,normalize=True)} # Linear regression with cross-validation
+        alpha = np.logspace (-6,3,50) #search 50 values
+        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True, fit_intercept=True), \
+                           "output":RidgeCV(alphas=alpha,normalize=True, fit_intercept=True)} # Linear regression with cross-validation
         # end resources for RC
         # network parameters
         self.cee = cee
@@ -358,24 +360,54 @@ class Lsm:
         Regression of teach_sig using inputs (x) and outputs (y).
         '''
         nT,Nn = x.shape
+
+        #x -= np.mean(x,axis=0)
+        #for i,s in enumerate(np.std(x,axis=0)):
+        #    if s > 1e-13:
+        #        x[:,i] /= s
+        #y -= np.mean(y,axis=0)
+        #for i,s in enumerate(np.std(y,axis=0)):
+        #    if s > 1e-13:
+        #        y[:,i] /= s
+                
+        #y -= np.mean(y,axis=0)[None,:]
+        #y /= np.std(y,axis=0)[None,:]
+
         # Covariance matrix
         Cx = np.dot (x.T, x) / nT # input
         C  = np.dot (y.T, y) / nT # output
+
+        #print 
+        print  "covdiff ", np.sum(np.abs(self.CovMatrix["input"]-Cx))/np.sum(np.abs(self.CovMatrix["input"]))
+
+        #figure()
+        #imshow(Cx, interpolation='nearest')
+        #colorbar()
+        #figure()
+        #imshow(self.CovMatrix["input"], interpolation='nearest')
+        #colorbar()
+        #figure()
+        #imshow(x, interpolation='nearest')
+        #colorbar()
+        #raw_input()
         # Projection on teaching signal(s)
+        
         Zx = np.dot (x.T, teach_sig) / nT
         Z  = np.dot (y.T, teach_sig) / nT
         
         # Update cov matrix
-        self.CovMatrix["input"]  += Cx
-        self.CovMatrix["output"] += C
-        # Update projection
-        self.ProjTeach["input"]   += Zx 
-        self.ProjTeach["output"]  += Z
+        self.CovMatrix["input"]     += Cx
+        self.CovMatrix["output"]    += C
+        self.ProjTeach["input"]     += Zx
+        self.ProjTeach["output"]    += Z
+            
         # Update weights
         self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
         self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
         self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
+        
+        self.n_updates += 1.0
 
     #characterize neurons responses
     def measure_phy_neurons(self, max_freq= 1500, min_freq = 350, duration = 1000, nsteps = 5):
@@ -386,7 +418,7 @@ class Lsm:
         somach = self.rcn.soma.channel
         inputch = 1
         neu_sync = 10
-        freq_sync = 300
+        freq_sync = 1500
         duration_sync = 100
         #save config
         self.save_config()
@@ -405,55 +437,44 @@ class Lsm:
         stim_time = float(duration)/nsteps
         for i in range(nsteps):
             t_start = (stim_time*i)+duration_sync
-            print t_start
             spiketrain = syn.spiketrains_poisson(freqs[i], duration=stim_time, t_start = (stim_time * i)+duration_sync)
             tot_spike_phases = pyNCS.pyST.merge_sequencers(spiketrain, tot_spike_phases)
 
-
-        out = self.setup.stimulate(tot_spike_phases,send_reset_event=False, duration=(stim_time*nsteps)+duration_sync+500) 
+        out = self.setup.stimulate(tot_spike_phases,send_reset_event=False, duration=duration*2) 
         out = out[somach]
         raw_data = out.raw_data()
         sync_index = raw_data[:,1] == neu_sync
         start_time = np.min(raw_data[sync_index,0])
-        index_after_sync = raw_data[:,0] > start_time
-        clean_data = raw_data[index_after_sync,:]
-        clean_data[:,0] = clean_data[:,0]- np.min(clean_data[:,0])
+        #index_after_sync = raw_data[:,0] > start_time
+        #clean_data = raw_data[index_after_sync,:]
+        #clean_data[:,0] = clean_data[:,0]- np.min(clean_data[:,0])
 
-        firing_rates = np.zeros([self.Nn,nsteps]) 
         figure()
-        for i in range(nsteps):
-            firing_rates[:,i] = self.mean_neu_firing_s(clean_data, np.linspace(0,self.Nn-1,self.Nn), [ (i*stim_time), ( stim_time*(i+1)) ]) 
-        for i in range(256):
-            plot(freqs, firing_rates[i,:], 'o-') 
+        out.t_start = start_time
+        plot(freqs[0:nsteps],np.sum(out.firing_rate(stim_time), axis=0)[0:nsteps]/256.0, 'o-')
         xlabel(r'$\nu_{in}$ [Hz]')
         ylabel(r'$\nu_{out}$ [Hz]') 
 
         return
 
-    def mean_neu_firing_s(self, spike_train, n_neurons, simulation_time):
-        mean_rate   = np.zeros([len(n_neurons)])
-        for i in range(len(n_neurons)):
-            index_neu = np.where(np.logical_and(spike_train[:,1] == n_neurons[i], np.logical_and(spike_train[:,0] > simulation_time[0] , spike_train[:,0] < simulation_time[1] )) )
-            mean_rate[i] = len(index_neu[0])*1000.0/(simulation_time[1]-simulation_time[0]) # time unit: ms
-        return mean_rate
-
 def ts2sig (t, func, ts, n_id):
     '''
-    t    -> time vector
+    t -> time vector
     func -> time basis f(t,ts)
     ts - > time stamp of spikes
-    n_id -> neuron id 
+    n_id -> neuron id
     '''
     nT = len(t)
     nid = np.unique(n_id)
     nS = len(nid)
-    Y = np.zeros([nT,self.Nn])
+    Y = np.zeros([nT,256])
     tot_exponent = []
     for i in xrange(nS):
         idx = np.where(n_id == nid[i])[0]
         #tot_exponent.append([this_exp])
-        Y[:,i] = np.sum(func(ts[idx]), axis=1)
-        #Y =  self.p.map(np.exp, tot_exponent)
+        #for j in range(len(idx)):
+        Y[:,nid[i]] = np.sum(func(t[:,None],ts[idx]), axis=1)
+        #Y = self.p.map(np.exp, tot_exponent)
     return Y
 
 def orth_signal (x, atol=1e-13, rtol=0):
