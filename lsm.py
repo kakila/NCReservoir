@@ -41,9 +41,9 @@ import pdb
 import multiprocessing as mpi
 
 class Lsm:
-    def __init__(self, population=None,  cee=0.5, cii=0.3):
+    def __init__(self, population=None,  cee=0.5, cii=0.3,nx=16,ny=16):
         ### ========================= define what is needed to program the chip ====
-        self.shape = (16,16);
+        self.shape = (nx,ny);
         self.Nn    = np.prod(self.shape);
         Nn2 = [self.Nn,self.Nn]
         # resources
@@ -54,16 +54,14 @@ class Lsm:
         self.matrix_programmable_exc_inh = np.zeros(Nn2)
         # end resources
         # resources for Reservoir Computing
-        self.teach_generator = orth_signal # function to generate teach signals
         self.CovMatrix  = {"input":np.zeros(Nn2),"output":np.zeros(Nn2)} # Covariance matrix of inputs and outputs
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Readout weights
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}     # Teaching signal projected on inputs and outputs
-        self.n_updates = 0.0 #prevent overflow
-        self.timev = []
-        self.func_timebase = []
-        alpha = np.logspace (-6,3,50) #search 50 values
-        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=True, fit_intercept=True), \
-                           "output":RidgeCV(alphas=alpha,normalize=True, fit_intercept=True)} # Linear regression with cross-validation
+        alpha = np.logspace (-6,3,50) # Regularization parameters: 50 values
+        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=False, fit_intercept=True), \
+                           "output":RidgeCV(alphas=alpha,normalize=False, fit_intercept=True)} # Linear regression with cross-validation
+        self.runningMean = {"input": 0, "output":0}
+        self.samples = 0
         # end resources for RC
         # network parameters
         self.cee = cee
@@ -347,6 +345,11 @@ class Lsm:
         self.CovMatrix  = {"input":np.zeros([self.Nn,self.Nn]),"output":np.zeros([self.Nn,self.Nn])}
         self.ReadoutW   = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
         self.ProjTeach  = {"input":np.zeros([self.Nn,1]),"output":np.zeros([self.Nn,1])}
+        alpha = np.logspace (-6,3,50) #search 50 values
+        self._regressor = {"input":RidgeCV(alphas=alpha,normalize=False, fit_intercept=True), \
+                           "output":RidgeCV(alphas=alpha,normalize=False, fit_intercept=True)} # Linear regression with cross-validation
+        self.runningMean = {"input": 0, "output":0}
+        self.samples = 0
         print "RC storage reseted!"
 
     def RC_predict (self,x,y):
@@ -359,55 +362,45 @@ class Lsm:
         '''
         Regression of teach_sig using inputs (x) and outputs (y).
         '''
-        nT,Nn = x.shape
+        nT,Nn        = x.shape
+        nTtot        = self.samples + nT
+        w            = (self.samples/nTtot, 1.0/nTtot)
 
-        #x -= np.mean(x,axis=0)
-        #for i,s in enumerate(np.std(x,axis=0)):
-        #    if s > 1e-13:
-        #        x[:,i] /= s
-        #y -= np.mean(y,axis=0)
-        #for i,s in enumerate(np.std(y,axis=0)):
-        #    if s > 1e-13:
-        #        y[:,i] /= s
-                
-        #y -= np.mean(y,axis=0)[None,:]
-        #y /= np.std(y,axis=0)[None,:]
-
+        # Update mean
+        #self.runningMean["input"] = w[0]*self.runningMean["input"] + w[1]*np.sum(x,axis=0)
+        #self.runningMean["output"] = w[0]*self.runningMean["output"] + w[1]*np.sum(y,axis=0)
+        # Detrend data
+        #xx = x - self.runningMean["input"]
+        #yy = y - self.runningMean["output"]
         # Covariance matrix
-        Cx = np.dot (x.T, x) / nT # input
-        C  = np.dot (y.T, y) / nT # output
-
-        #print 
-        print  "covdiff ", np.sum(np.abs(self.CovMatrix["input"]-Cx))/np.sum(np.abs(self.CovMatrix["input"]))
-
-        #figure()
-        #imshow(Cx, interpolation='nearest')
-        #colorbar()
-        #figure()
-        #imshow(self.CovMatrix["input"], interpolation='nearest')
-        #colorbar()
-        #figure()
-        #imshow(x, interpolation='nearest')
-        #colorbar()
-        #raw_input()
-        # Projection on teaching signal(s)
-        
-        Zx = np.dot (x.T, teach_sig) / nT
-        Z  = np.dot (y.T, teach_sig) / nT
-        
+        Cx = np.dot (x.T, x) # input
+        C  = np.dot (y.T, y) # output
+        # Projection of data
+        Zx = np.dot (x.T, teach_sig)
+        Z  = np.dot (y.T, teach_sig)
+        #print  "covdiff ", np.sum(np.abs(self.CovMatrix["input"]-Cx))/np.sum(np.abs(self.CovMatrix["input"]))
         # Update cov matrix
-        self.CovMatrix["input"]     += Cx
-        self.CovMatrix["output"]    += C
-        self.ProjTeach["input"]     += Zx
-        self.ProjTeach["output"]    += Z
-            
+        self.CovMatrix["input"]   = w[0]*self.CovMatrix["input"] + w[1]*Cx
+        self.CovMatrix["output"]  = w[0]*self.CovMatrix["output"] + w[1]*C
+        self.ProjTeach["input"]   = w[0]*self.ProjTeach["input"] + w[1]*Zx
+        self.ProjTeach["output"]  = w[0]*self.ProjTeach["output"] + w[1]*Z
         # Update weights
         self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
         self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
         self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
-        
-        self.n_updates += 1.0
+
+        #self._regressor["input"].fit(x, teach_sig)
+        #self._regressor["output"].fit(y, teach_sig)
+        #if (self.samples == 0) :
+        #    self.ReadoutW["input"]  = self._regressor["input"].coef_.T
+        #    self.ReadoutW["output"] = self._regressor["output"].coef_.T
+        #else:
+        #    self.ReadoutW["input"]  = w[0]*self.ReadoutW["input"] + w[1]*self._regressor["input"].coef_.T
+        #    self.ReadoutW["output"] = w[0]*self.ReadoutW["output"] + w[1]*self._regressor["output"].coef_.T
+
+        # Update samples
+        self.samples = nTtot
 
     #characterize neurons responses
     def measure_phy_neurons(self, max_freq= 1500, min_freq = 350, duration = 1000, nsteps = 5):

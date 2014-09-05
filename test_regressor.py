@@ -35,7 +35,7 @@ import sys
 import lsm as L
 
 liquid = L.Lsm() #init liquid state machine
-prob_n_itter = 0.9;
+prob_n_itter = 1;
 t = np.linspace (0,1,1e3)[:,None]
 M = np.random.randn(1,256)
 x = t.dot(M)
@@ -51,24 +51,20 @@ def sys (x,bias,expo,zeros):
 
 y = sys (t,bias,expo,zeros)
 K = np.random.randn(256,1)
-z = y.dot(K[::-1])
+z = np.hstack((y.dot(K[::-1]), x.dot(K[::-1])))
 score = []
 for i in xrange(100):
     t_ = t + 0.05*np.random.randn(t.shape[0],t.shape[1])
     x_ = t_.dot(M)
     zeros = np.where(np.random.rand(256,1)>prob_n_itter)[0]
     y_ = sys (t_,bias,expo,zeros)
-    z_ = y_.dot(K[::-1])
-    z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
-    liquid._realtime_learn (x_,y_,z_)
-    score.append([liquid._regressor["input"].score(x_,z_), liquid._regressor["output"].score(y_,z_)])
+    liquid._realtime_learn (x_,y_,z)
+    score.append([liquid._regressor["input"].score(x_,z), liquid._regressor["output"].score(y_,z)])
 
 t_ = t + 0.05*np.random.randn(t.shape[0],t.shape[1])
 x_ = t_.dot(M)
 zeros = np.where(np.random.rand(256,1)>1)[0]
 y_ = sys (t_,bias,expo,zeros)
-z_ = y_.dot(K[::-1])
-z_ = z_ + 0.1*np.random.randn(t.shape[0],t.shape[1])  
 
 zh = liquid.RC_predict (x_,y_)
 clf()
