@@ -150,7 +150,7 @@ class Lsm:
                     else:
                         self.matrix_programmable_w[post,pre] = w[0]
 
-    def create_stimuli_matrix (self,G, rates, nT, nx=16, ny=16) :
+    def create_stimuli_matrix (self, G, rates, nT, nx=16, ny=16) :
         '''
         Generates a matrix the mean rates of the input neurons defined in
         nT time intervals.
@@ -177,12 +177,14 @@ class Lsm:
         V   = np.array([r(t) for r in rates])
 
         M = np.zeros ([nx*ny, nT])
+        GG = np.zeros ([nx,ny])
         for g,r in zip(G,V):
             M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
+            GG += g(x,y)
 
         return M
 
-    def create_spiketrain_from_matrix(self, M, max_freq= 1000, min_freq = 350, nsteps = 30, neu_sync=10, duration = 1000, delay_sync = 500, duration_sync = 200, freq_sync = 600):
+    def create_spiketrain_from_matrix(self, M, c = 0.1,  max_freq= 1000, min_freq = 350, neu_sync=10, duration = 1000, delay_sync = 500, duration_sync = 200, freq_sync = 600):
         '''
         create stimulus from rate matrix 
         it adds the sync neu as well
@@ -190,29 +192,32 @@ class Lsm:
         vsyn = 4
         somach = self.rcn.soma.channel
         inputch = 1
-        nsyn, nsteps = np.shape(M)
+        nneu, nsteps = np.shape(M)
 
         #we pick a random projection
         nsyn_tot = len(self.rcn.synapses['virtual_exc'].addr)
-        index_syn_tot = np.linspace(0,nsyn_tot-1, nsyn_tot)
-        np.random.shuffle(index_syn_tot)
-        index_syn = index_syn_tot[0:nsyn]
-        #stim_matrix = r_[[500*np.random.random(len(self.rcn.soma.addr)*vsyn)]*nsteps]
-        #stim_matrix = r_[[np.linspace(min_freq,max_freq,len(self.rcn.soma.addr)*vsyn)]*nsteps]
-        #stim_matrix = np.r_[[np.linspace(min_freq,max_freq,nsyn)]*nsteps]
-        timebins = np.linspace(0, duration, nsteps)
-        syn = self.rcn.synapses['virtual_exc'][index_syn.astype(int)]
+        syn_for_input_neu = int(c*nsyn_tot)
+        index_syn = np.random.random_integers(0, high=nsyn_tot-1, size=nneu*syn_for_input_neu)
 
+        #build up stimulus
+        timebins = np.linspace(0, duration, nsteps)
+        #syn = self.rcn.synapses['virtual_exc'][index_syn.astype(int)]
         #rescale M to max/min freq
         new_value = np.ceil(( (M - np.min(M)) / (np.max(M) - np.min(M)) ) * (max_freq  - min_freq) + min_freq)
-
+        
+        #sync stimulus 
         index_neu = self.rcn.synapses['virtual_exc'].addr['neu'] == neu_sync           
         syn_sync = self.rcn.synapses['virtual_exc'][index_neu]
         sync_spikes = syn_sync.spiketrains_regular(freq_sync,duration=duration_sync)
-
-        spiketrain = syn.spiketrains_inh_poisson(new_value,timebins+delay_sync)
-        #spiketrain = syn.spiketrains_regular(min_freq*2, duration=duration+delay_sync)
+        #for every neuson create stimulus projection
+        syn = self.rcn.synapses['virtual_exc'][0]
+        spiketrain = syn.spiketrains_regular(0, duration=10)
         stimulus = pyNCS.pyST.merge_sequencers(sync_spikes, spiketrain)
+        for this_neu in range(nneu):
+            syn = self.rcn.synapses['virtual_exc'][index_syn.astype(int)][this_neu*syn_for_input_neu:(this_neu+1)*syn_for_input_neu]
+            this_M = np.vstack((new_value[this_neu,:],)*syn_for_input_neu)
+            spiketrain = syn.spiketrains_inh_poisson(this_M,timebins+delay_sync)
+            stimulus = pyNCS.pyST.merge_sequencers(stimulus, spiketrain)
 
         return stimulus
 
@@ -449,6 +454,27 @@ class Lsm:
         ylabel(r'$\nu_{out}$ [Hz]') 
 
         return
+        
+    def RC_score(self, zh, sig):
+        '''
+        compare two signals
+        '''
+        scores = np.sqrt(((zh - sig) ** 2).sum(axis=0)) / np.sqrt((sig** 2).sum(axis=0))
+        #nT, nteach = np.shape(sig)
+        #z = (zh-zh.mean(axis=0))/zh.std(axis=0)
+        #s = (sig-sig.mean(axis=0))/sig.std(axis=0)
+        #scores = np.dot(z.T,s).T / nT
+        
+        #scores = np.zeros([nteach,1])
+        #for ind,this_teach in enumerate(teach_sig.T):
+        #    sig  = np.dot(X,self._regressor[type_r].coef_[ind,:][:,None])+self._regressor[type_r].intercept_[ind]
+        #    sig = (sig - np.mean(sig))/np.std(sig) 
+        #    tt = np.copy(this_teach)
+        #    tt = (tt-np.mean(tt))/np.std(tt)
+        #    score = np.dot(sig.T,tt)  / nT
+        #    scores[ind,:] = score
+            
+        return scores
 
 def ts2sig (t, func, ts, n_id):
     '''
@@ -483,6 +509,7 @@ def orth_signal (x, atol=1e-13, rtol=0):
     xt = xt - w.predict(x)
     #pdb.set_trace()
     return xt
+    
 
 '''        if(save_data):
 
