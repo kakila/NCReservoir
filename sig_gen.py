@@ -42,7 +42,7 @@ def sinmix_int (t, n_max=50, n_min=1, A=None):
     
     omega = 2*np.pi*f;
     omeg2 = omega**2;
-    if not A:
+    if A is None:
         A = np.random.randn (N,1);
     
     T = t[-1];
@@ -73,7 +73,7 @@ def sinmix (t, f, A=None):
     
     omega = 2*np.pi*f;
     omeg2 = omega**2;
-    if not A:
+    if A is None:
         A = np.random.randn (N,1);
     
     T = t[-1];
