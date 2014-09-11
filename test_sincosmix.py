@@ -31,7 +31,7 @@ import sig_gen as s
 import matplotlib.pyplot as plt
 
 t  = np.linspace(0,10,1e3)[:,None] # time vector
-f  = np.arange(10,15,0.1)[None,:] # frequency band 5-25 Hz
+f  = np.arange(10,15,0.1)[None,:] # frequency band 10-15 Hz
 
 plt.ion()
 A = None
