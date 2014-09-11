@@ -36,6 +36,7 @@ import matplotlib
 from pylab import *
 from sklearn.linear_model import RidgeCV
 from sklearn import metrics
+from scipy.stats import pearsonr
 
 import pdb
 import multiprocessing as mpi
@@ -342,6 +343,7 @@ class Lsm:
         '''
 
         inputs, outputs = self.stimulate_reservoir(stimulus,trials=1)
+        time.sleep(0.5)
 
         return inputs, outputs
             
@@ -459,7 +461,12 @@ class Lsm:
         '''
         compare two signals
         '''
-        scores = np.sqrt(((zh - sig) ** 2).sum(axis=0)) / np.sqrt((sig** 2).sum(axis=0))
+        #scores = np.sqrt(((zh - sig) ** 2).sum(axis=0)) / np.sqrt((sig** 2).sum(axis=0))
+        nT, nteach = np.shape(sig)
+        scores = np.zeros([nteach,2])
+        for i in range(nteach):
+            scores[i,:] = pearsonr(zh[:,i], sig[:,i])
+            
         #nT, nteach = np.shape(sig)
         #z = (zh-zh.mean(axis=0))/zh.std(axis=0)
         #s = (sig-sig.mean(axis=0))/sig.std(axis=0)
