@@ -31,13 +31,15 @@ import sig_gen as s
 import matplotlib.pyplot as plt
 
 t  = np.linspace(0,10,1e3)[:,None] # time vector
-f  = np.arange(10,25,0.1)[None,:] # frequency band 5-25 Hz
+f  = np.arange(10,15,0.1)[None,:] # frequency band 5-25 Hz
 
 plt.ion()
+A = None
 for shift in np.linspace(-5,5,3):
-    w = s.sincosmix(t,f+shift)
+    w,a = s.sincosmix(t,f+shift,A=A)
+    A = a
     u = np.fft.rfft(w,axis=0)
     ff = np.linspace(0,t.shape[0]/2/t[-1],u.shape[0])
-    plt.semilogy (ff,u*np.conjugate(u))
+    plt.semilogy (ff,np.abs(u)**2)
 
 

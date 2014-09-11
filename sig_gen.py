@@ -59,7 +59,7 @@ def sinmix_int (t, n_max=50, n_min=1, A=None):
     w_max = np.max (W)
     W     = (W - w_min) / (w_max - w_min)
     
-    return W
+    return W,A
 
 def sinmix (t, f, A=None):
     '''
@@ -90,7 +90,7 @@ def sinmix (t, f, A=None):
     w_max = np.max (W)
     W     = (W - w_min) / (w_max - w_min)
     
-    return W
+    return W,A
 
 def sincosmix(t, f, A=None):
     '''
@@ -104,7 +104,7 @@ def sincosmix(t, f, A=None):
     
     omega = 2*np.pi*f;
     omeg2 = omega**2;
-    if not A:
+    if A is None:
         A = np.random.randn (2*N,1);
     
     T = t[-1];
@@ -126,5 +126,5 @@ def sincosmix(t, f, A=None):
     w_max = np.max (W)
     W     = (W - w_min) / (w_max - w_min)
     
-    return W
+    return W,A
 
