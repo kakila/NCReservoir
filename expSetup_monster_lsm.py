@@ -33,6 +33,7 @@ import sys
 import matplotlib
 sys.path.append('../api/lsm/')
 import lsm as L
+import time
 
 
 ######################################
@@ -81,7 +82,7 @@ if (is_configured == False):
 ######################################
 # Generate gestures parameters
 num_gestures = 1 # Number of gestures
-ntrials      = 100 # Number of repetitions of each gesture
+ntrials      = 2000 # Number of repetitions of each gesture
 
 gestures = []
 for this_gesture in range(num_gestures):
@@ -114,13 +115,14 @@ nsteps = 50
 func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2)) # time in ms
 
 # Handle to figure to plot while learning
-fig_h = figure()
-fig_i = figure()
+#fig_h = figure()
+#fig_i = figure()
 ion()
 
 # Store scores of RC
 scores = []
-tot_scores = []
+tot_scores_in = []
+tot_scores_out = []
 # Stimulation parameters
 duration   = 1000
 delay_sync = 500
@@ -140,28 +142,31 @@ syn_per_input_neu = 6
 c = syn_per_input_neu/len(liquid.rcn.synapses['virtual_exc'].addr)
 for ind,this_g in enumerate(gestures):
 
-    M = liquid.create_stimuli_matrix(G[ind], rates[ind], nsteps, nx=2,ny=2)
+    M = liquid.create_stimuli_matrix(G[ind], rates[ind], nsteps, nx=4,ny=4)
     #one stimiluation for  all trials --> NO VARIABILITY IN THE INPUTs
     stimulus = liquid.create_spiketrain_from_matrix(M, 
                                                     c = c, 
                                                     duration=duration,  
                                                     delay_sync=delay_sync,  
-                                                    max_freq= 2500, min_freq = 350)
+                                                    max_freq= 2800, min_freq = 400)
     
     #generate teaching signal associated with the Gesture
     teach_scale = arange(0.1,2,0.05)
     gesture_teach = rates[0][ind]((teach_scale*timev[:,None])*1e-3)
+    #just poke it for the first time... to start in same configuration all the times..
+    inputs, outputs = liquid.RC_poke(stimulus)
     
     for this_t in xrange(ntrials): 
     
-        #stimulus = liquid.create_spiketrain_from_matrix(M, 
-        #                                            c = c, 
-        #                                            duration=duration,  
-        #                                            delay_sync=delay_sync,  
-        #                                            max_freq= 2500, min_freq = 350)
+        stimulus = liquid.create_spiketrain_from_matrix(M, 
+                                                    c = c, 
+                                                    duration=duration,  
+                                                    delay_sync=delay_sync,  
+                                                    max_freq= 2800, min_freq = 400)
     
     
-        nsetup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')    
+        #nsetup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')
+        #time.sleep(0.2)    
         #stimulate
         inputs, outputs = liquid.RC_poke(stimulus)
 
@@ -189,7 +194,8 @@ for ind,this_g in enumerate(gestures):
         score_in = liquid.RC_score(zh["input"], teach_sig)
         score_out = liquid.RC_score(zh["output"], teach_sig)
         
-        tot_scores.append([score_in, score_out])
+        tot_scores_in.append(score_in)
+        tot_scores_out.append(score_out)
         #print "we are scoring...", scores
                 
         #this_score = [liquid._regressor["input"].score(X,teach_sig)], \
@@ -210,39 +216,41 @@ for ind,this_g in enumerate(gestures):
         #    axis('off')
 
          
-            
+#we plot the pearson correlation coeff
+figure()            
+for i in range(1500,2000):
+    plot(tot_scores_out[i][:,0], 'bo-')
+    plot(tot_scores_in[i][:,0], 'ro-')
 
-#figure()
-#plot(np.array(scores)[:,0], 'o-', label='input')
-#plot(np.array(scores)[:,1], 'o-', label='output')
-#ylim([-1,1])
-#legend(loc='best')
+
+#predict
 tot_in_scores = np.zeros([np.shape(teach_sig)[1], 2])
 tot_out_scores = np.zeros([np.shape(teach_sig)[1], 2])
-for i in range(5):
-    inputs, outputs = liquid.RC_poke(stimulus)
-    # Convert input and output spikes to analog signals
-    X = L.ts2sig(timev, membrane, inputs[0][:,0], np.floor(inputs[0][:,1]))
-    Y = L.ts2sig(timev, membrane, outputs[0][:,0], outputs[0][:,1])
-    zh = liquid.RC_predict (X,Y)
-    pred_in_scores = liquid.RC_score(zh["input"], teach_sig)
-    pred_out_scores = liquid.RC_score(zh["output"], teach_sig)
-    tot_in_scores += pred_in_scores[:,None]
-    tot_out_scores += pred_out_scores[:,None]
-tot_in_scores /= 5
-tot_out_scores /= 5
+#for i in range(5):
+inputs, outputs = liquid.RC_poke(stimulus)
+# Convert input and output spikes to analog signals
+X = L.ts2sig(timev, membrane, inputs[0][:,0], np.floor(inputs[0][:,1]))
+Y = L.ts2sig(timev, membrane, outputs[0][:,0], outputs[0][:,1])
+zh = liquid.RC_predict (X,Y)
+pred_in_scores = liquid.RC_score(zh["input"], teach_sig)
+pred_out_scores = liquid.RC_score(zh["output"], teach_sig)
+
 
 figure()
-plot(teach_scale, tot_in_scores, 'o-')
+plot(teach_scale, pred_in_scores [:,0], 'bo-', label="input")
 xlabel("scale [au]")
-ylabel("score ")
-title("input performances")
+ylabel("pearson corr coeff")
+title(" performances")
+legend(loc="best")
+
 
 figure()
-plot(teach_scale, tot_out_scores, 'o-')
+plot(teach_scale, pred_out_scores[:,0], 'ro-', label="output")
 xlabel("scale [au]")
-ylabel("score ")
-title("output performances")
+ylabel("pearson corr coeff")
+title(" performances")
+legend(loc="best")
+
 
 figure()
 zh = liquid.RC_predict (X,Y)
