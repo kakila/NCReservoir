@@ -1,4 +1,4 @@
-NCResevoir
+NCReservoir
 ==========
 
 Neuromorphic Chip Reservoir Computing
