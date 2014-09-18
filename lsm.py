@@ -160,6 +160,7 @@ class Lsm:
         G: A list with G_i(x,y), each element is a function 
                 G_i: [-1,1]x[-1,1] --> [0,1] 
            defining the intensity of mean rates on the (-1,1)-square.
+           If [], G is assumed equal to 1 for all x,y.
         nx,ny: Number of neurons in the x and y direction (default 16).
 
         rates: A list with the time variations of the input mean rates.
@@ -173,15 +174,18 @@ class Lsm:
         
         nR = len(rates) # Number of rates
 
-        x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
         t   = np.linspace(0,1,nT,endpoint=False)
         V   = np.array([r(t) for r in rates])
 
-        M = np.zeros ([nx*ny, nT])
-        GG = np.zeros ([nx,ny])
-        for g,r in zip(G,V):
-            M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
-            GG += g(x,y)
+        if len(G) > 0:
+            x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
+            M = np.zeros ([nx*ny, nT])
+            for g,r in zip(G,V):
+                M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
+        else:
+            M = np.zeros ([1,nT])
+            for r in V:
+                M += r.ravel()[None,:]
 
         return M
 
