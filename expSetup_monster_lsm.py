@@ -32,9 +32,11 @@ import pyNCS
 import sys
 import matplotlib
 sys.path.append('../api/lsm/')
+sys.path.append('../api/retina/')
+sys.path.append('../gui/reservoir_display/')
 import lsm as L
 import time
-
+from retina import Retina as ret
 
 ######################################
 # Configure chip
@@ -46,43 +48,69 @@ except NameError:
 else:
   print "Chip is configured: ", is_configured
 
+
 if (is_configured == False):
-  #populations divisible by 2 for encoders
-  neuron_ids = np.linspace(0,255,256)
-  npops      = len(neuron_ids)
 
-  #setup
-  prefix    = '../'
-  setuptype = '../setupfiles/mc_final_mn256r1.xml'
-  setupfile = '../setupfiles/final_mn256r1_retina_monster.xml'
-  nsetup    = pyNCS.NeuroSetup(setuptype, setupfile, prefix=prefix)
-  nsetup.mapper._init_fpga_mapper()
+    use_retina = True
 
-  chip      = nsetup.chips['mn256r1']
+    #populations divisible by 2 for encoders
+    neuron_ids = np.linspace(0,255,256)
+    npops      = len(neuron_ids)
 
-  chip.configurator._set_multiplexer(0)
+    #setup
+    prefix    = '../'
+    setuptype = '../setupfiles/mc_final_mn256r1.xml'
+    setupfile = '../setupfiles/final_mn256r1_retina_monster.xml'
+    nsetup    = pyNCS.NeuroSetup(setuptype, setupfile, prefix=prefix)
+    nsetup.mapper._init_fpga_mapper()
 
-  #populate neurons
-  rcnpop = pyNCS.Population('neurons', 'for fun') 
-  rcnpop.populate_by_id(nsetup,'mn256r1','excitatory', neuron_ids)
+    chip      = nsetup.chips['mn256r1']
 
-  chip.load_parameters('biases/biases_reservoir.biases')
+    chip.configurator._set_multiplexer(0)
 
-  #init liquid state machine
-  liquid = L.Lsm(rcnpop, cee=0.8, cii=0.5)
+    #populate neurons
+    rcnpop = pyNCS.Population('neurons', 'for fun') 
+    rcnpop.populate_by_id(nsetup,'mn256r1','excitatory', neuron_ids)
 
-  #c = 0.2
-  #dim = np.round(np.sqrt(len(liquid.rcn.synapses['virtual_exc'].addr)*c))
+    if(not use_retina):
+        chip.load_parameters('biases/biases_reservoir.biases')
+    else:
+        chip.load_parameters('biases/biases_reservoir_retina.biases')
+
+    #init liquid state machine
+    liquid = L.Lsm(rcnpop, cee=0.8, cii=0.5)
+
+    #c = 0.2
+    #dim = np.round(np.sqrt(len(liquid.rcn.synapses['virtual_exc'].addr)*c))
+
+    if(use_retina):
+        ###### configure retina
+        inputpop = pyNCS.Population('','')
+        inputpop.populate_by_id(nsetup,'mn256r1', 'excitatory', np.linspace(0,255,256))  
+        #reset multiplexer
+        chip.configurator._set_multiplexer(0)
+        retina = ret(inputpop)
+        retina._init_fpga_mapper()
+        retmaps, pres, posts = retina.map_retina_to_mn256r1_macro_pixels()
+
+        import RetinaInputs as ri
+        win = ri.RetinaInputs(nsetup)
+        #win.run(300)
+    
+    # do config only once
+    is_configured = True
   
-  # do config only once
-  is_configured = True
+  
 # End chip configuration
 ######################################
 
 ######################################
 # Generate gestures parameters
 num_gestures = 1 # Number of gestures
-ntrials      = 2000 # Number of repetitions of each gesture
+ntrials      = 1 # Number of repetitions of each gesture
+nx_d = 16
+ny_d = 16
+
 
 gestures = []
 for this_gesture in range(num_gestures):
@@ -115,8 +143,8 @@ nsteps = 50
 func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*150**2)) # time in ms
 
 # Handle to figure to plot while learning
-#fig_h = figure()
-#fig_i = figure()
+fig_h = figure()
+fig_i = figure()
 ion()
 
 # Store scores of RC
@@ -124,8 +152,10 @@ scores = []
 tot_scores_in = []
 tot_scores_out = []
 # Stimulation parameters
-duration   = 1000
+duration   = 1000   #ms
 delay_sync = 500
+framerate = 60
+counts = (duration/1000)*framerate #for 60 frames per sec
 
 # Time vector for analog signals
 Fs    = 100/1e3 # Sampling frequency (in kHz)
@@ -142,7 +172,7 @@ syn_per_input_neu = 6
 c = syn_per_input_neu/len(liquid.rcn.synapses['virtual_exc'].addr)
 for ind,this_g in enumerate(gestures):
 
-    M = liquid.create_stimuli_matrix(G[ind], rates[ind], nsteps, nx=4,ny=4)
+    M = liquid.create_stimuli_matrix(G[ind], rates[ind], nsteps, nx=nx_d ,ny=ny_d )
     #one stimiluation for  all trials --> NO VARIABILITY IN THE INPUTs
     stimulus = liquid.create_spiketrain_from_matrix(M, 
                                                     c = c, 
@@ -158,17 +188,20 @@ for ind,this_g in enumerate(gestures):
     
     for this_t in xrange(ntrials): 
     
-        stimulus = liquid.create_spiketrain_from_matrix(M, 
-                                                    c = c, 
-                                                    duration=duration,  
-                                                    delay_sync=delay_sync,  
-                                                    max_freq= 2800, min_freq = 400)
+        #stimulus = liquid.create_spiketrain_from_matrix(M, 
+        #                                            c = c, 
+        #                                            duration=duration,  
+        #                                            delay_sync=delay_sync,  
+        #                                            max_freq= 2800, min_freq = 400)
     
     
         #nsetup.chips['mn256r1'].load_parameters('biases/biases_reservoir.biases')
         #time.sleep(0.2)    
         #stimulate
-        inputs, outputs = liquid.RC_poke(stimulus)
+        if not use_retina:
+            inputs, outputs = liquid.RC_poke(stimulus)
+        else:
+            inputs, outputs = win.run(counts, framerate=framerate)
 
         # Convert input and output spikes to analog signals
         X = L.ts2sig(timev, membrane, inputs[0][:,0], np.floor(inputs[0][:,1]))
@@ -203,22 +236,22 @@ for ind,this_g in enumerate(gestures):
    
         #print this_score
         #print "we are plotting outputs"
-        #figure(fig_h.number)
-        #for i in range(256):
-        #    subplot(16,16,i)
-        #    plot(Y[:,i])
-        #    axis('off')
-        #print "we are plotting inputs"
-        #figure(fig_i.number)
-        #for i in range(256):
-        #    subplot(16,16,i)
-        #    plot(X[:,i])
-        #    axis('off')
+        figure(fig_h.number)
+        for i in range(256):
+            subplot(16,16,i)
+            plot(Y[:,i])
+            axis('off')
+        print "we are plotting inputs"
+        figure(fig_i.number)
+        for i in range(256):
+            subplot(16,16,i)
+            plot(X[:,i])
+            axis('off')
 
          
 #we plot the pearson correlation coeff
 figure()            
-for i in range(1500,2000):
+for i in range(ntrials):
     plot(tot_scores_out[i][:,0], 'bo-')
     plot(tot_scores_in[i][:,0], 'ro-')
 
@@ -269,10 +302,3 @@ legend(loc='best')
 #figure()
 #a,b = np.where(X>0)
 #plot(X[:,b[1]], Y, 'o')
-
-
-
-
-
-
-
