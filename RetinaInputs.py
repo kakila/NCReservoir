@@ -18,6 +18,7 @@
 from visual import *
 import numpy as np
 from threading import Thread
+import time as tt
 
 class RetinaInputs():
 
@@ -27,11 +28,13 @@ class RetinaInputs():
                 ShowVectors = 0,
                 ShowOrbits = True,
                 L1 = 1.0,
-                L3 = 3.0):
+                L3 = 3.0,
+				BuildOffline = False):
+        self.BuildOffline = BuildOffline
         # Define the global constants
         self.I1 = I1             # I1=I2 symmetric princ. moments of inertia
-        self.I3 = I3             # The tird principal moment of inertia
         self.omega0 = omega0          # positive by definition
+        self.I3 = I3             # The tird principal moment of self
         self.omega3 = omega3
         self.display_arms = display_arms  #display cilider arms
         # Create the angular momentum (L) and angular velocity (w) vectors
@@ -62,9 +65,13 @@ class RetinaInputs():
 
         self.setup = setup
         self.this_t = 0
+        self.retina_channel = 2
+        self.chip_channel = 0
+        self.sync_dur = 200 #duration/framerate
                 
         self.raw_data = []
         self._init_everything()
+        self.inputs_signals = []
 
     def MovingFrame(self):
         phi = self.Omega_p*self.t
@@ -131,6 +138,12 @@ class RetinaInputs():
         self.tip = curve(color=self.COrbit)
         if self.ShowOrbits and self.PaintOrbit: tip.append(pos=self.MvTip1.pos+self.MvTip1.axis)
 
+        #sync helix
+        self.sync = helix(pos=(2,3,2.6), axis=(-0.6, 0, -0.6), raidus=0.2) 
+        self.sync.set_radius(0.2)
+        #self.sync.set_pos((2,3,2.6))
+        #self.sync.set_axis((-0.6, 0, -0.6)) 
+
         # Define the object: a body (ellipsoid) +2 arms (cylinders)
         self.Body = ellipsoid(pos=self.cm, axis=self.L3*self.V3,
          height=self.L1, width=self.L1, color=self.CObject)
@@ -184,94 +197,142 @@ class RetinaInputs():
         self.Omega_e  = self.omega3*(I3-I1)/I1     # extra rotation around 3 
 
         self.t = 0
+        self.this_t = 0
         self.Dt = 0.02/self.Omega_p
         self.PaintOrbit = False
         self.CosTheta = I3*self.omega3/sqrt((I1*self.omega0)**2+(I3*self.omega3)**2)
         self.SinTheta = sqrt(1-self.CosTheta**2)
         self.cm = vector(0,0,0)
 
-        self.this_t = 0
 
     def _record_chip_activity(self, duration):
         out = self.setup.stimulate({}, send_reset_event=False, duration=duration) 
-        out = out[0]
-        #sync data with sync neuron
-        self.raw_data = out.raw_data()
-        self.raw_data[:,0] = self.raw_data[:,0]-np.min(self.raw_data[:,0])
+        self.out = out
 
-        return
+    def go_sync(self):
+        self.sync.set_y(np.random.random()+2.3)
+        
+    def update_ellipsoid(self):
+        # Update the body and the moving frame
+        self.Body.axis=self.L3*self.V3
+        if self.display_arms:
+            self.Arm1.pos=-1.2*self.L1*self.V1; self.Arm1.axis=2.4*self.L1*self.V1
+            self.Arm2.pos=-1.2*self.L1*self.V2; self.Arm2.axis=2.4*self.L1*self.V2
+
+        if self.ShowOrbits :
+            self.MvFrm1.pos=[self.cm,self.LF*self.V1]
+            self.MvTip1.pos=self.LF*self.V1; 
+            self.MvTip1.axis=0.1*self.LF*self.V1
+            self.MvFrm2.pos=[self.cm,self.LF*self.V2]
+            self.MvTip2.pos=self.LF*self.V2; 
+            self.MvTip2.axis=0.1*self.LF*self.V2
+            self.MvFrm3.pos=[self.cm,self.LF*self.V3]
+            self.MvTip3.pos=self.LF*self.V3; 
+            self.MvTip3.axis=0.1*self.LF*self.V3
+        tip1 = self.LF*self.V1; 
+        tip1_ax = 0.1*self.LF*self.V1
+        tip2 = self.LF*self.V2; 
+        tip2_ax = 0.1*self.LF*self.V2
+        tip3 = self.LF*self.V3; 
+        tip3_ax = 0.1*self.LF*self.V3
+        ### trajectory to be recovered and predicted
+        self.inputs_signals.append([list(tip1), list(tip2), list(tip3), list(tip1_ax), list(tip2_ax), list(tip3_ax)])
+
+        # Toggle Painting of orbit and the L w vectors
+        if self.window.mouse.events:
+            self.mouseObj = self.window.mouse.getevent()
+            self.window.mouse.events = 0
+            if self.mouseObj.click == "left":   # Toggle orbit of x1
+                if self.PaintOrbit == True:
+                    self.PaintOrbit = False
+                    self.tip.pos=[]
+                else: self.PaintOrbit = True
+            if self.mouseObj.click == "right":  # Togle display of L and w
+                self.ShowVectors = 1 - self.ShowVectors
+                self.L_body.visible = self.ShowVectors
+                self.L_tip.visible = self.ShowVectors
+                self.L_label.visible = self.ShowVectors
+                self.w_body.visible = self.ShowVectors
+                self.w_tip.visible = self.ShowVectors
+                self.w_label.visible = self.ShowVectors 
+
+        # Paint orbit of x1 tip and the angular velocity w        
+        if self.PaintOrbit == True:
+            self.tip.append(pos=self.MvTip1.pos+self.MvTip1.axis)
+
+        w = self.omega0*(cos(self.Omega_e*self.t)*self.V1+sin(self.Omega_e*self.t)*self.V2)+self.omega3*self.V3
+        w = w/mag(w)*self.LF
+        self.w_body.pos = [self.cm,w]
+        self.w_tip.pos=w; self.w_tip.axis=0.1*w
+        self.w_label.pos= self.Char_omega(self.w_tip.pos+1.2*self.w_tip.axis)
+        self.this_t += 1    
 
     def run(self, counts, framerate=125):
         self.start_position() #make it start from the same initial conditions
+        for i in range(2):
+            rate(framerate)
+            self.MovingFrame() 
+            self.update_ellipsoid()
+            
+        tt.sleep(0.4)
         duation_in_ms = (counts/framerate)*1000+50
-        self.setup.mapper._program_detail_mapping(2**6) #swith on retina mapping
-        t = Thread(target=self._record_chip_activity, args=(duation_in_ms,))
-        t.daemon = True
-        t.start()
-        outputs = []
+        
+        #record spikes
+        if(not self.BuildOffline):
+            self.setup.mapper._program_detail_mapping(2**6) #swith on retina mapping
+            t = Thread(target=self._record_chip_activity, args=(duation_in_ms,))
+            t.daemon = True
+            t.start()
+            outputs = []
+            inputs = []
+        #sync stim 
+        for i in range(self.sync_dur):
+            rate(framerate)
+            self.go_sync()
+            
+        #go with rotation of ellipsoide
         while self.this_t < counts:
             rate(framerate)
-            
             self.t += self.Dt
             self.MovingFrame() # The new unit vectors
-
-            # Update the body and the moving frame
-            self.Body.axis=self.L3*self.V3
-            if self.display_arms:
-                self.Arm1.pos=-1.2*self.L1*self.V1; self.Arm1.axis=2.4*self.L1*self.V1
-                self.Arm2.pos=-1.2*self.L1*self.V2; self.Arm2.axis=2.4*self.L1*self.V2
-
-            if self.ShowOrbits :
-                self.MvFrm1.pos=[self.cm,self.LF*self.V1]
-                self.MvTip1.pos=self.LF*self.V1; self.MvTip1.axis=0.1*self.LF*self.V1
-                self.MvFrm2.pos=[self.cm,self.LF*self.V2]
-                self.MvTip2.pos=self.LF*self.V2; self.MvTip2.axis=0.1*self.LF*self.V2
-                self.MvFrm3.pos=[self.cm,self.LF*self.V3]
-                self.MvTip3.pos=self.LF*self.V3; self.MvTip3.axis=0.1*self.LF*self.V3
-
-            # Toggle Painting of orbit and the L w vectors
-            if self.window.mouse.events:
-                self.mouseObj = self.window.mouse.getevent()
-                self.window.mouse.events = 0
-                if self.mouseObj.click == "left":   # Toggle orbit of x1
-                    if self.PaintOrbit == True:
-                        self.PaintOrbit = False
-                        self.tip.pos=[]
-                    else: self.PaintOrbit = True
-                if self.mouseObj.click == "right":  # Togle display of L and w
-                    self.ShowVectors = 1 - self.ShowVectors
-                    self.L_body.visible = self.ShowVectors
-                    self.L_tip.visible = self.ShowVectors
-                    self.L_label.visible = self.ShowVectors
-                    self.w_body.visible = self.ShowVectors
-                    self.w_tip.visible = self.ShowVectors
-                    self.w_label.visible = self.ShowVectors 
-
-            # Paint orbit of x1 tip and the angular velocity w        
-            if self.PaintOrbit == True:
-                self.tip.append(pos=self.MvTip1.pos+self.MvTip1.axis)
-
-            w = self.omega0*(cos(self.Omega_e*self.t)*self.V1+sin(self.Omega_e*self.t)*self.V2)+self.omega3*self.V3
-            w = w/mag(w)*self.LF
-            self.w_body.pos = [self.cm,w]
-            self.w_tip.pos=w; self.w_tip.axis=0.1*w
-            self.w_label.pos= self.Char_omega(self.w_tip.pos+1.2*self.w_tip.axis)
-            self.this_t += 1          
-
-        t.join()
-        outputs.append(self.raw_data)
-        self.setup.mapper._program_detail_mapping(2**7) #switch off retina mapping
+            self.update_ellipsoid()  
+             
+        #wait record spikes thread      
+        if(not self.BuildOffline):
+            t.join()
+            this_out = self.out[self.chip_channel].raw_data()
+            this_out[:,0] = this_out[:,0]-np.min(this_out[:,0])
+            this_in = self.out[self.retina_channel].raw_data()
+            this_in[:,0] = this_in[:,0]-np.min(this_in[:,0])
+            outputs.append(this_out)
+            inputs.append(this_in)
+            self.setup.mapper._program_detail_mapping(2**7) #switch off retina mapping
+		
+            return inputs, outputs
         
-        return 0, outputs
 
 #main loop
 if __name__ == '__main__':    
 
-    win = RetinaInputs()                   
-    win.run()
+    duration = 1000
+    win = RetinaInputs(1,BuildOffline=True)                   
+    win.run(duration)    
+    inputs = np.array(win.inputs_signals)
+    
+    from pylab import *
+    import matplotlib
+    dur, coord, space = np.shape(inputs)
+    figure()
+    title('inputs')
+    for this_coord in range(coord):
+        for this_dim in range(space):
+            plot(inputs[:,this_coord, this_dim])
+    show()
+            
+            
         
-                             
-
+    
+                            
         
 
         
