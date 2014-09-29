@@ -216,8 +216,10 @@ class RetinaInputs():
         # Update the body and the moving frame
         self.Body.axis=self.L3*self.V3
         if self.display_arms:
-            self.Arm1.pos=-1.2*self.L1*self.V1; self.Arm1.axis=2.4*self.L1*self.V1
-            self.Arm2.pos=-1.2*self.L1*self.V2; self.Arm2.axis=2.4*self.L1*self.V2
+            self.Arm1.pos=-1.2*self.L1*self.V1; 
+            self.Arm1.axis=2.4*self.L1*self.V1
+            self.Arm2.pos=-1.2*self.L1*self.V2; 
+            self.Arm2.axis=2.4*self.L1*self.V2
 
         if self.ShowOrbits :
             self.MvFrm1.pos=[self.cm,self.LF*self.V1]
@@ -229,13 +231,15 @@ class RetinaInputs():
             self.MvFrm3.pos=[self.cm,self.LF*self.V3]
             self.MvTip3.pos=self.LF*self.V3; 
             self.MvTip3.axis=0.1*self.LF*self.V3
+            
         tip1 = self.LF*self.V1; 
         tip1_ax = 0.1*self.LF*self.V1
         tip2 = self.LF*self.V2; 
         tip2_ax = 0.1*self.LF*self.V2
         tip3 = self.LF*self.V3; 
         tip3_ax = 0.1*self.LF*self.V3
-        ### trajectory to be recovered and predicted
+        
+        ### input trajectory to be recovered and predicted by the reservoir
         self.inputs_signals.append([list(tip1), list(tip2), list(tip3), list(tip1_ax), list(tip2_ax), list(tip3_ax)])
 
         # Toggle Painting of orbit and the L w vectors
