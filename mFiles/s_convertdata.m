@@ -19,13 +19,14 @@
 # and make easier processing.
 pkg load parallel general
 
+folder = "../../chip_MN256R01/data/tracking_10gestures_3trials";
 ## Number of neurons in each direction
 ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 4; #Number of gestures [0:N-1] 
-Nt = 10; #Number of trials  [0:N-1]
+Ng = 10; #Number of gestures [0:N-1] 
+Nt = 3; #Number of trials  [0:N-1]
 if exist("redo")
   OUTdata = INdata  = struct ("Tmax",0, ...          # Maximum value of time vector
                               "Nid" ,[1e4 -1], ...   # Min max neuron id
@@ -38,7 +39,7 @@ if exist("redo")
 
   for g = 1:Ng;
     for tt = 1:Nt;
-      [X Y] = loaddata (g-1,tt-1);
+      [X Y] = loaddata (g-1,tt-1, folder);
       INdata.Tmax = max (max (X.t), INdata.Tmax);
       INdata.Nid(1) = min (min (X.n_id), INdata.Nid(1)) + 1;
       INdata.Nid(2) = max (max (X.n_id), INdata.Nid(2)) + 1;
@@ -47,7 +48,7 @@ if exist("redo")
       Nn    = length (INdata.nid{g,tt});
       I     = repmat (INdata.nid{g,tt}, Nn, 1);
       J     = INdata.nid{g,tt}(kron ((1:Nn).', ones(Nn,1)));
-      INdata.ind{g,tt} = sub2ind([N,N], I, J);
+      INdata.ind{g,tt} = sub2ind ([N,N], I, J);
 
       OUTdata.Tmax = max (max (Y.t), OUTdata.Tmax);
       OUTdata.Nid(1) = min (min (Y.n_id), OUTdata.Nid(1));
@@ -57,47 +58,47 @@ if exist("redo")
       Nn    = length (OUTdata.nid{g,tt});
       I     = repmat (OUTdata.nid{g,tt}, Nn, 1);
       J     = OUTdata.nid{g,tt}(kron ((1:Nn).', ones(Nn,1)));
-      OUTdata.ind{g,tt} = sub2ind([N,N], I, J);
+      OUTdata.ind{g,tt} = sub2ind ([N,N], I, J);
 #      if g==1 && tt==1
 #        keyboard
 #      endif
-    endfor # over trias
+    endfor # over trials
   endfor # over gestures
 
-  fname  = fullfile (pwd, "data","synthetic_gestures", "metadata.dat");
+  fname  = fullfile (folder, "metadata.dat");
   save (fname,"INdata","OUTdata");
 endif
 
-clear -x N Ng Nt nx ny
-fname  = fullfile (pwd, "data","synthetic_gestures", "metadata.dat");
+clear -x N Ng Nt nx ny folder
+fname  = fullfile (folder, "metadata.dat");
 load (fname);
 ## Prepare analog time vector
 T  = OUTdata.Tmax / 1e3; # in seconds
 Fs = 100; # minimum sampling Freq in Hz
 nT = ceil (T*Fs);
-t  = linspace(0,T,nT).';
-dt = t(2)-t(1);
+t  = linspace (0,T,nT).';
+dt = t(2) - t(1);
 
 # Conversion form Sike to Analog
 t_width = 0.05; # time width in seconds
 tw2     = t_width^2;
-v       = @(t,ts) exp (-(t-ts).^2/2/tw2);% .* cos(2*pi*(t-ts)/3/s);
+v       = @(t,ts) exp (-(t-ts).^2/2/tw2);   % .* cos(2*pi*(t-ts)/3/s);
 v_avg   = @(t,ts) exp (-(t-ts).^2/2/tw2/10);% .* cos(2*pi*(t-ts)/3/s);
 
-fname = @(p,t) fullfile (pwd, "data","synthetic_gestures", ...
+fname = @(p,t) fullfile (folder, ...
                          sprintf ("gesture_%d_trial_%d.dat",p,t));
 x_active = zeros (nT,Ng);
 for g = 1:Ng
   for tt = 1:Nt
-    [X Y] = loaddata (g-1,tt-1);
+    [X Y] = loaddata (g-1,tt-1, folder);
     Ya = ts2sig_v2 (t,Y.t/1e3,Y.n_id,v,[nx,ny])/N;
     Xa = ts2sig_v2 (t,X.t/1e3,X.n_id,v,[nx,ny])/N;
     save (fname(g-1,tt-1), "t", "Ya", "Xa");
 
     # input Activity signal
-    x_active(:,g) += mean(ts2sig_v2 (t,X.t/1e3,X.n_id,v_avg,[nx,ny]),2);
+    x_active(:,g) += mean (ts2sig_v2 (t,X.t/1e3,X.n_id,v_avg,[nx,ny]),2);
   endfor # over trials
 endfor # over gestures
-x_active = x_active ./ max(x_active);
-save (fullfile (pwd, "data","synthetic_gestures", "input_activity.dat"),"x_active");
+x_active = x_active ./ max (x_active);
+save (fullfile (folder, "input_activity.dat"),"x_active");
 

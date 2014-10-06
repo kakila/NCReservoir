@@ -22,7 +22,7 @@
 ## Loads only output unless two output arguments are requiered.
 ## @end deftypefn
 
-function [varargout] = loaddata (proj, trial)
+function [varargout] = loaddata (proj, trial, folder)
   ofname = @(p,t) sprintf ("outputs_gesture_%d_trial_%d.txt",p,t);
   ifname = @(p,t) sprintf ("inputs_gesture_%d_trial_%d.txt",p,t);
 
@@ -34,7 +34,7 @@ function [varargout] = loaddata (proj, trial)
 
   if nargout > 1
     # Load input
-    fname  = fullfile (pwd, "data","synthetic_gestures", ifname(proj,trial));
+    fname  = fullfile (folder, ifname(proj,trial));
     printf ("Loading from %s\n",fname); fflush(stdout);
     tmp    = load (fname);
     
@@ -45,7 +45,7 @@ function [varargout] = loaddata (proj, trial)
   endif
             
   # Load output
-  fname  = fullfile (pwd, "data","synthetic_gestures", ofname(proj,trial));
+  fname  = fullfile (folder, ofname(proj,trial));
   printf ("Loading from %s\n",fname); fflush(stdout);
   tmp    = load (fname);
   

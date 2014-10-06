@@ -20,10 +20,10 @@ ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 4; #Number of gestures [0:N-1] 
-Nt = 10; #Number of trials  [0:N-1]
-Ntrain = 3;
-Ntest  = 7;
+Ng = 10; #Number of gestures [0:N-1] 
+Nt = 3; #Number of trials  [0:N-1]
+Ntrain = 2;
+Ntest  = 1;
 
 C_in = zeros (N);
 C    = zeros (N);
@@ -31,7 +31,9 @@ C    = zeros (N);
 Z_in = zeros (N,1);
 Z    = zeros (N,1);
 
-fname = @(p,t) fullfile (pwd, "data","synthetic_gestures", ...
+folder = "../../chip_MN256R01/data/tracking_10gestures_3trials";
+
+fname = @(p,t) fullfile (folder, ...
                          sprintf ("gesture_%d_trial_%d.dat",p,t));
 ### Teaching signal
 if exist("recode")
@@ -64,8 +66,8 @@ endif # recode teach signal
 # Covariance matrix of learning set
 C = C_in = zeros (N);
 Z = Z_in = zeros (N,1);
-load(fullfile (pwd, "data","synthetic_gestures","metadata.dat"));
-load(fullfile (pwd, "data","synthetic_gestures", "input_activity.dat"));
+load(fullfile (folder,"metadata.dat"));
+load(fullfile (folder, "input_activity.dat"));
 nT = length(x_active);
 for g=1:Ng;
   for tt=1:Ntrain; 
@@ -73,7 +75,7 @@ for g=1:Ng;
     C_in(INdata.ind{g,tt}) += (Xa.'*Xa)(:)/nT; 
     C(OUTdata.ind{g,tt})   += (Ya.'*Ya)(:)/nT;
 
-    zz = z(g,t).*x_active(:,g);
+    zz = z(g,t);%.*x_active(:,g);
     Z_in(INdata.nid{g,tt}) += Xa.'*zz;
     Z(OUTdata.nid{g,tt})   += Ya.'*zz;
     
@@ -104,13 +106,14 @@ for g = 1:Ng;
     load (fname(g-1,tt-1)); 
     zh_in = Xa * W_in(INdata.nid{g,tt})/nT;
     zh    = Ya * W(OUTdata.nid{g,tt})/nT;
-    zz    = z(g,t).*x_active(:,g);
+    zz    = z(g,t);%.*x_active(:,g);
     
     INerror.train(g,tt)  = mean ((zz-zh_in).^2) / mean(zz.^2);
     OUTerror.train(g,tt) = mean ((zz-zh).^2) / mean(zz.^2);  
     subplot(Nt,1,tt)
     plot(t,zh_in,'.r',t,zh,'.g',t,zz,'-k');
-    axis ([0 max(t) min(zz) max(zz)]);
+    axis tight
+    %axis ([0 max(t) min(zz) max(zz)]);
   endfor #over trials 
 endfor #over gestures
 
@@ -121,7 +124,7 @@ for g=1:Ng;
     load (fname(g-1,tt-1));
     zh_in = Xa * W_in(INdata.nid{g,tt})/nT;
     zh    = Ya * W(OUTdata.nid{g,tt})/nT;
-    zz = z(g,t).*x_active(:,g);
+    zz = z(g,t);%.*x_active(:,g);
 
     INerror.test(g,tt)  = mean ((zz-zh_in).^2) / mean(zz.^2);
     OUTerror.test(g,tt) = mean ((zz-zh).^2) / mean(zz.^2);  
@@ -141,5 +144,6 @@ for g=1:Ng
   subplot(2,2,g);
   tmp = [FFTtest_in(:,g) FFTtest(:,g) FFT(:,g)];
   h = semilogy(F,abs(tmp)); legend(h,{"in","out","des"});
-  axis([0 2*max(freq) 1e-6 1]);
+  axis tight
+  %axis([0 2*max(freq) 1e-6 1]);
 endfor
