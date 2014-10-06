@@ -80,7 +80,7 @@ t  = linspace (0,T,nT).';
 dt = t(2) - t(1);
 
 # Conversion form Sike to Analog
-t_width = 0.05; # time width in seconds
+t_width = 0.5; # time width in seconds
 tw2     = t_width^2;
 v       = @(t,ts) exp (-(t-ts).^2/2/tw2);   % .* cos(2*pi*(t-ts)/3/s);
 v_avg   = @(t,ts) exp (-(t-ts).^2/2/tw2/10);% .* cos(2*pi*(t-ts)/3/s);
