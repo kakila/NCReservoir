@@ -74,7 +74,7 @@ fname  = fullfile (folder, "metadata.dat");
 load (fname);
 ## Prepare analog time vector
 T  = OUTdata.Tmax / 1e3; # in seconds
-Fs = 100; # minimum sampling Freq in Hz
+Fs = 25; # minimum sampling Freq in Hz
 nT = ceil (T*Fs);
 t  = linspace (0,T,nT).';
 dt = t(2) - t(1);

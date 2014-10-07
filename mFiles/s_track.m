@@ -64,18 +64,21 @@ endif # recode teach signal
 # Covariance matrix of learning set
 C = C_in = zeros (N);
 Z = Z_in = zeros (N,3);
-for g=1:Ntrain;
-  for tt=1:Nt;
+nTtot = 0;
+weig = [nT,1];
+for tt=1:Nt;
+  for g=1:Ntrain;
     load(fname(g-1,tt-1)); 
-    C_in(INdata.ind{g,tt}) += (Xa.'*Xa)(:)/nT; 
-    C(OUTdata.ind{g,tt})   += (Ya.'*Ya)(:)/nT;
+    weig  = [nTtot,1]/(nTtot+nT);
+    nTtot += nT; 
+    C_in(INdata.ind{g,tt}) = weig(1)*C_in(INdata.ind{g,tt}) + weig(2)*(Xa.'*Xa)(:); 
+    C(OUTdata.ind{g,tt})   = weig(1)*C(OUTdata.ind{g,tt}) + weig(2)*(Ya.'*Ya)(:);
 
     zz = z(:,:,g,tt);%.*x_active(:,g);
-    Z_in(INdata.nid{g,tt},:) += Xa.'*zz;
-    Z(OUTdata.nid{g,tt},:)   += Ya.'*zz;
-    
-  endfor #over trials 
-endfor #over gestures
+    Z_in(INdata.nid{g,tt},:) = weig(1)*Z_in(INdata.nid{g,tt},:) + weig(2)*(Xa.'*zz);
+    Z(OUTdata.nid{g,tt},:)   = weig(1)*Z(OUTdata.nid{g,tt},:) + weig(2)*(Ya.'*zz);
+  endfor #over gestures
+endfor #over trials 
 
 # Train
 W = W_in  = zeros (N,3); 
@@ -83,15 +86,15 @@ lambda = logspace (-6,2,50);
 
 # Cov matrix has zero rows and cols due to unactive neurons
 # We remove those zero rows and cols.
-nz_in       = find(sum(abs(C_in),2)>1e-4); # non zeros rows of Cov matrix
-K           = submat (C_in,nz_in,nz_in,"mode","keep","eco"); 
-[W_tmp,lambda0_in]       = xridgereg (K, Z_in(nz_in,:),lambda); 
-W_in(nz_in,:) = W_tmp;
+nz_in              = find(sum(abs(C_in),2)>1e-4); # non zeros rows of Cov matrix
+K                  = submat (C_in,nz_in,nz_in,"mode","keep","eco"); 
+[W_tmp,lambda0_in] = xridgereg (K, Z_in(nz_in,:),lambda); 
+W_in(nz_in,:)      = W_tmp;
 
-nz    = find(sum(abs(C),2)>1e-4); # non zeros rows of Cov matrix
-K     = submat (C,nz,nz,"mode","keep","eco");
+nz              = find(sum(abs(C),2)>1e-4); # non zeros rows of Cov matrix
+K               = submat (C,nz,nz,"mode","keep","eco");
 [W_tmp,lambda0] = xridgereg (K, Z(nz,:),lambda); 
-W(nz,:) = W_tmp;
+W(nz,:)         = W_tmp;
 
 INerror = OUTerror = struct ("train",zeros(Ntrain,Nt,3),"test", zeros (Ntest,Nt,3));
 # Train Error
@@ -99,8 +102,8 @@ for g = 1:Ntrain;
   for tt=1:Nt;
     figure (tt)
     load (fname(g-1,tt-1)); 
-    zh_in = Xa * W_in(INdata.nid{g,tt},:)/nT;
-    zh    = Ya * W(OUTdata.nid{g,tt},:)/nT;
+    zh_in = Xa * W_in(INdata.nid{g,tt},:);
+    zh    = Ya * W(OUTdata.nid{g,tt},:);
     zz    = z(:,:,g,tt);%.*x_active(:,g);
     
     INerror.train(g,tt,:)  = mean ((zz-zh_in).^2) ./ mean(zz.^2);
@@ -118,8 +121,8 @@ for g=Ntrain+1:Ntrain+Ntest;
   for tt=1:Nt;
     figure (tt)
     load (fname(g-1,tt-1));
-    zh_in = Xa * W_in(INdata.nid{g,tt},:)/nT;
-    zh    = Ya * W(OUTdata.nid{g,tt},:)/nT;
+    zh_in = Xa * W_in(INdata.nid{g,tt},:);
+    zh    = Ya * W(OUTdata.nid{g,tt},:);
     zz    = z(:,:,g,tt);%.*x_active(:,g);
 
     INerror.test(g-Ntrain,tt,:)  = mean ((zz-zh_in).^2) ./ mean(zz.^2);
