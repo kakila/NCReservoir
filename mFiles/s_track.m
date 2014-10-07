@@ -20,9 +20,9 @@ ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 10; #Number of gestures [0:N-1] 
-Nt = 3; #Number of trials  [0:N-1]
-Ntrain = 9;
+Ng = 21; #Number of gestures [0:N-1] 
+Nt = 4; #Number of trials  [0:N-1]
+Ntrain = 3;
 Ntest  = 1;
 
 C_in = zeros (N);
@@ -31,7 +31,7 @@ C    = zeros (N);
 Z_in = zeros (N,1);
 Z    = zeros (N,1);
 
-folder = "../../chip_MN256R01/data/tracking_10gestures_3trials";
+folder = "../data/lsm_ret/";
 
 fname = @(p,t) fullfile (folder, ...
                          sprintf ("gesture_%d_trial_%d.dat",p,t));
