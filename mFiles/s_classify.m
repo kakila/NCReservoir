@@ -20,8 +20,8 @@ ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 10; #Number of gestures [0:N-1] 
-Nt = 3; #Number of trials  [0:N-1]
+Ng = 25; #Number of gestures [0:N-1] 
+Nt = 4; #Number of trials  [0:N-1]
 Ntrain = 2;
 Ntest  = 1;
 
