@@ -67,11 +67,25 @@ class RetinaInputs():
         self.this_t = 0
         self.retina_channel = 2
         self.chip_channel = 0
-        self.sync_dur = 200 #duration/framerate
+        self.sync_dur = 50 #duration/framerate
+        self.delay_after_sync = 2000
                 
         self.raw_data = []
         self._init_everything()
         self.inputs_signals = []
+        self.teach_signals = []
+        self.delay_sync_time = 1000
+        
+        self.XMAX = 400 # x and y range over 0 to XMAX
+        self.scene = scene
+        self.scene.width = self.XMAX
+        self.scene.fov = 0.01 # make effectively 2D
+        self.scene.range = self.XMAX/2
+        self.scene.center = (self.XMAX/2,self.XMAX/2)
+        self.scene.height = self.XMAX+60 # titlebar plus toolbar 60 pixels high
+        self.pixels = points()
+        self.haspoints = True
+
 
     def MovingFrame(self):
         phi = self.Omega_p*self.t
@@ -105,10 +119,10 @@ class RetinaInputs():
         self.letter_omega = array(l_omega) # Use a numeric array for efficiency
 
         # Properties of the display window 
-        self.window = display(title="Retina Stimulus", width=600, height=600)
+        self.window = display(title="Retina Stimulus", y=750, x=850, width=600, height=490)#width=600, height=600)
         self.window.fullscreen = 0      # Change to 0 to get a floating window
         self.window.userspin = 0        # No rotation with mouse
-        self.window.range = (4,4,4)
+        self.window.range = (4,5,4)
         self.window.forward =  (-1,0,0)
         self.window.up = (0,0,1)        # psoitive z axis vertically up!  
         self.window.ambient=ambient=0.1 # perfect for retina dvs (control mean firing rates)
@@ -120,7 +134,7 @@ class RetinaInputs():
             pass
 
         Info = (self.I3/self.I1, self.omega3/self.omega0)
-        label(text = "I3/I1 = %.2f    w3/w0 = %.2f" % Info, pos=(0,0,-2.5),
+        label(text = "I3/I1 = %.2f    w3/w0 = %.2f" % Info, pos=(0,0,-3),
         height=20, color=color.red, box=0)
 
         # Define the unit vectors of the moving frame and the object at t=0
@@ -139,8 +153,8 @@ class RetinaInputs():
         if self.ShowOrbits and self.PaintOrbit: tip.append(pos=self.MvTip1.pos+self.MvTip1.axis)
 
         #sync helix
-        self.sync = helix(pos=(2,3,2.6), axis=(-0.6, 0, -0.6), raidus=0.2) 
-        self.sync.set_radius(0.2)
+        #self.sync = helix(pos=(2,3,2.6), axis=(-0.6, 0, -0.6), raidus=0.2) 
+        #self.sync.set_radius(0.2)
         #self.sync.set_pos((2,3,2.6))
         #self.sync.set_axis((-0.6, 0, -0.6)) 
 
@@ -179,6 +193,14 @@ class RetinaInputs():
                 ShowOrbits = True,
                 L1 = 1.0,
                 L3 = 3.0):
+        del self.inputs_signals
+        del self.teach_signals
+        del self.t
+        del self.this_t
+        del self.Dt 
+        self.pixels.visible = False
+        self.inputs_signals = []  
+        self.teach_signals = []      
         # Define the global constants
         self.I1 = I1             # I1=I2 symmetric princ. moments of inertia
         self.I3 = I3             # The tird principal moment of inertia
@@ -202,11 +224,21 @@ class RetinaInputs():
         self.PaintOrbit = False
         self.CosTheta = I3*self.omega3/sqrt((I1*self.omega0)**2+(I3*self.omega3)**2)
         self.SinTheta = sqrt(1-self.CosTheta**2)
-        self.cm = vector(0,0,0)
+        self.pixels = points()
+        self.pixels.visible = True
 
+    def plot_pix(self, nx, ny, nz, c):
+        self.pixels.append(pos=(0,ny,nz), color=c)
 
-    def _record_chip_activity(self, duration):
+    def _record_chip_activity(self, duration, neu_sync):
         out = self.setup.stimulate({}, send_reset_event=False, duration=duration) 
+        #clean data
+        raw_data = out[self.chip_channel].raw_data()
+        sync_index = raw_data[:,1] == neu_sync
+        start_time = np.min(raw_data[sync_index,0])
+        out[self.chip_channel].t_start = start_time+self.delay_sync_time
+        out[self.retina_channel].t_start = start_time+self.delay_sync_time
+              
         self.out = out
 
     def go_sync(self):
@@ -241,6 +273,7 @@ class RetinaInputs():
         
         ### input trajectory to be recovered and predicted by the reservoir
         self.inputs_signals.append([list(tip1), list(tip2), list(tip3), list(tip1_ax), list(tip2_ax), list(tip3_ax)])
+        self.teach_signals.append([list(tip1), list(tip1_ax)])
 
         # Toggle Painting of orbit and the L w vectors
         if self.window.mouse.events:
@@ -271,46 +304,81 @@ class RetinaInputs():
         self.w_label.pos= self.Char_omega(self.w_tip.pos+1.2*self.w_tip.axis)
         self.this_t += 1    
 
-    def run(self, counts, framerate=125):
-        self.start_position() #make it start from the same initial conditions
+    def go_sync_pix(self):
+        for y in range(3):
+            this_y = (2.5 - 2.0) * np.random.rand() + 2.0
+            for x in range(3):
+                this_x = (3 - 2.6) * np.random.rand() + 2.6
+                for z in np.linspace(-3,3,20):
+                    this_z = (3 + 3) * np.random.rand() - 3
+                    bw = np.random.choice([0,1])
+                    randomcolor = (bw, bw, bw)
+                    self.plot_pix(this_x,this_y,this_z,randomcolor)
+    
+    def run(self, counts, framerate=60, neu_sync = 255, omegas = None):
+        '''
+        counts -> timer count
+        framerate -> guess
+        neu_sync -> neuron that we use as a sync signal
+        different_traj -> sample init omegas on a sphere
+        '''
+    
+        if omegas != None:
+            self.start_position(omega0=omegas[0],omega1=omegas[1], omega3=omegas[2])
+        else:
+            self.start_position() #make it start from the same initial conditions
+            
         for i in range(2):
             rate(framerate)
             self.MovingFrame() 
             self.update_ellipsoid()
-            
         tt.sleep(0.4)
         duation_in_ms = (counts/framerate)*1000+50
         
         #record spikes
         if(not self.BuildOffline):
             self.setup.mapper._program_detail_mapping(2**6) #swith on retina mapping
-            t = Thread(target=self._record_chip_activity, args=(duation_in_ms,))
+            t = Thread(target=self._record_chip_activity, args=(duation_in_ms,neu_sync))
             t.daemon = True
             t.start()
             outputs = []
             inputs = []
         #sync stim 
+        
+        ### Simple example: Give every pixel a random color:
+        start = time.time()
         for i in range(self.sync_dur):
             rate(framerate)
-            self.go_sync()
+            self.go_sync_pix()
+        time_exc = tt.time() - start  
+        print "##### time for sync", time_exc    
             
+        start = time.time()    
         #go with rotation of ellipsoide
         while self.this_t < counts:
-            rate(framerate)
             self.t += self.Dt
             self.MovingFrame() # The new unit vectors
+            rate(framerate)
             self.update_ellipsoid()  
+        time_exc = tt.time() - start  
+        print "##### time for rotation", time_exc    
+           
              
         #wait record spikes thread      
         if(not self.BuildOffline):
             t.join()
             this_out = self.out[self.chip_channel].raw_data()
-            this_out[:,0] = this_out[:,0]-np.min(this_out[:,0])
+            index_after_start = this_out[:,0] >= self.out[self.chip_channel].t_start
+            this_out_f = this_out[index_after_start,:]
+            this_out_f[:,0] = this_out_f[:,0]-np.min(this_out_f[:,0])
             this_in = self.out[self.retina_channel].raw_data()
-            this_in[:,0] = this_in[:,0]-np.min(this_in[:,0])
-            outputs.append(this_out)
-            inputs.append(this_in)
+            index_after_start = this_in[:,0] >= self.out[self.retina_channel].t_start
+            this_in_f = this_in[index_after_start,:]
+            this_in_f[:,0] = this_in_f[:,0]-np.min(this_in_f[:,0])
+            outputs.append(this_out_f)
+            inputs.append(this_in_f)
             self.setup.mapper._program_detail_mapping(2**7) #switch off retina mapping
+
 		
             return inputs, outputs
         
@@ -318,28 +386,55 @@ class RetinaInputs():
 #main loop
 if __name__ == '__main__':    
 
-    duration = 1000
+    duration = 300
     win = RetinaInputs(1,BuildOffline=True)                   
     win.run(duration)    
     inputs = np.array(win.inputs_signals)
     
-    from pylab import *
+    import pylab as pl
     import matplotlib
     dur, coord, space = np.shape(inputs)
-    figure()
-    title('inputs')
+
+    pl.figure()
+    pl.title('inputs')
     for this_coord in range(coord):
         for this_dim in range(space):
-            plot(inputs[:,this_coord, this_dim])
-    show()
-            
-            
-        
-    
-                            
-        
+            pl.plot(inputs[:,this_coord, this_dim])
+    pl.show()
+          
+          
 
-        
+                
+#from __future__ import division
+#from visual import *
+#import numpy as np
+
+#XMAX = 400 # x and y range over 0 to XMAX
+#scene.width = XMAX
+#scene.fov = 0.01 # make effectively 2D
+#scene.range = XMAX/2
+#scene.center = (XMAX/2,XMAX/2)
+#haspoints = False # assume no "points" object (Visual 4)
+
+#scene.height = XMAX+60 # titlebar plus toolbar 60 pixels high
+#pixels = points()
+#haspoints = True
+
+
+#def plot(nx,ny,c):
+#    if haspoints:
+#        pixels.append(pos=(nx,ny,0), color=c)
+#    else:
+#        lines[ny].color[2*nx] = c
+#        lines[ny].color[2*nx+1] = c
+
+
+#### Simple example: Give every pixel a random color:
+#for y in range(XMAX):
+#    for x in range(XMAX):
+#        randomcolor = (np.random.rand(),np.random.rand(),np.random.rand())
+#        plot(x,y,randomcolor)
+
 
         
 
