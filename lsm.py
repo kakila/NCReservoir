@@ -80,8 +80,8 @@ class Lsm:
     ### ========================= functions ===================================
     def _init_lsm(self):
         # rcn with learning synapses
-        self._connect_populations_programmable(self.rcn,self.rcn,self.cee,[2])
-        self._connect_populations_programmable_inh(self.rcn,self.rcn,self.cii,[2])
+        self._connect_populations_learning(self.rcn,self.rcn,self.cee,1)
+        self._connect_populations_programmable_inh(self.rcn,self.rcn,self.cii,[0,3])
         return 
 
     def _connect_populations_programmable_inh(self, pop_pre,pop_post,connectivity,w):
@@ -160,7 +160,6 @@ class Lsm:
         G: A list with G_i(x,y), each element is a function 
                 G_i: [-1,1]x[-1,1] --> [0,1] 
            defining the intensity of mean rates on the (-1,1)-square.
-           If [], G is assumed equal to 1 for all x,y.
         nx,ny: Number of neurons in the x and y direction (default 16).
 
         rates: A list with the time variations of the input mean rates.
@@ -174,18 +173,15 @@ class Lsm:
         
         nR = len(rates) # Number of rates
 
+        x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
         t   = np.linspace(0,1,nT,endpoint=False)
         V   = np.array([r(t) for r in rates])
 
-        if len(G) > 0:
-            x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
-            M = np.zeros ([nx*ny, nT])
-            for g,r in zip(G,V):
-                M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
-        else:
-            M = np.zeros ([1,nT])
-            for r in V:
-                M += r.ravel()[None,:]
+        M = np.zeros ([nx*ny, nT])
+        GG = np.zeros ([nx,ny])
+        for g,r in zip(G,V):
+            M += np.array(g(x,y).ravel()[:,None] * r) / sum (g(x,y).ravel()[:,None])
+            GG += g(x,y)
 
         return M
 
@@ -487,7 +483,7 @@ class Lsm:
             
         return scores
 
-def ts2sig (t, func, ts, n_id):
+def ts2sig (t, func, ts, n_id, n_neu = 256):
     '''
     t -> time vector
     func -> time basis f(t,ts)
@@ -497,7 +493,7 @@ def ts2sig (t, func, ts, n_id):
     nT = len(t)
     nid = np.unique(n_id)
     nS = len(nid)
-    Y = np.zeros([nT,256])
+    Y = np.zeros([nT,n_neu])
     tot_exponent = []
     for i in xrange(nS):
         idx = np.where(n_id == nid[i])[0]
