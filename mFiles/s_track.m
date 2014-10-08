@@ -14,6 +14,7 @@
 ## along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 ## Author: Juan Pablo Carbajal <ajuanpi+dev@gmail.com>
+pkg load parallel general
 
 ## Number of neurons in each direction
 ny = nx = 16;
@@ -101,12 +102,7 @@ W(nz,:)         = W_tmp;
 #####################################
 # PLOT
 #####################################
-clear -x INdata OUTdata Xa Ya z W W_in t
-# Find maximum and minimum values of the whole data set.
-Ng = 18; #Number of gestures [0:N-1] 
-Nt = 4; #Number of trials with tests per gesture [0:N-1]
-Ntrain = 16; #number of gestures used to train
-Ntest  = 1;  #number of tests
+
 
 INerror = OUTerror = struct ("train",zeros(Ng,Nt,3),"test", zeros (Ng,Nt,3));
 # Train Error
