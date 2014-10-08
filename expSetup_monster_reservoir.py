@@ -49,9 +49,10 @@ else:
   print "Chip is configured: ", is_configured
 
 save_data_to_disk = True
-real_time_learn = False
-produce_learning_plot = False
+real_time_learn = True
+produce_learning_plot = True
 test_reservoir = False
+teach_orth = True
 
 if (is_configured == False):
 
@@ -226,22 +227,34 @@ def train(num_gestures,ntrials):
             #X[:,0:b*c] = np.reshape(win.inputs_signals, [nT,b*c])       
             d,e,f = np.shape(win.teach_signals)
             teach_sign = np.zeros([nT,n_neu])
-            teach_sign[:,0:e*f] = np.reshape(win.teach_signals, [nT,e*f])       
+            teach_sign[:,0:e*f] = np.reshape(win.teach_signals, [nT,e*f])    
+            
             
             # Convert input and output spikes to analog signals
             if real_time_learn:
-                inputs = convert_input(inputs)
-                X = L.ts2sig(timev, membrane, inputs[0][:,0], inputs[0][:,1], n_neu = 256)
+                #inputs = convert_input(inputs)
+                #X = L.ts2sig(timev, membrane, inputs[0][:,0], inputs[0][:,1], n_neu = 256)
+                X = np.zeros([nT,n_neu])
+                a,b,c = np.shape(win.inputs_signals)
+                X[:,0:b*c] = np.reshape(win.inputs_signals, [nT,b*c])  
+
+                #learn.. what? tip or something ortogonal to it?                
+                if teach_orth:
+                    teach_ortogonal_sign = L.orth_signal(X)#np.zeros([nT,n_neu])
+                    teach_ortogonal = np.zeros([nT,n_neu])
+                    for i in range(n_neu):
+                        teach_ortogonal[:,i] = teach_ortogonal_sign
+                    teach_sign = teach_ortogonal
+                    
                 Y = L.ts2sig(timev, membrane, outputs[0][:,0], outputs[0][:,1], n_neu = 256)
                 
-                #learn
+                print "teaching non orthogonal stuff to the input signals..."
                 liquid._realtime_learn (X,Y,teach_sign)
                 print np.sum(liquid.CovMatrix['input']), np.sum(liquid.CovMatrix['output'])
                 #evaluate
                 zh = liquid.RC_predict (X,Y)
                 score_in = liquid.RC_score(zh["input"], teach_sign)
                 score_out = liquid.RC_score(zh["output"], teach_sign)
-                
                 tot_scores_in.append(score_in[0:e*f,:])
                 tot_scores_out.append(score_out[0:e*f,:])
                 #print "we are scoring...", scores                 
@@ -253,6 +266,7 @@ def train(num_gestures,ntrials):
                 for i in range(e*f):
                     np.savetxt("lsm_ret/teaching_signals_gesture_"+str(ind)+"_teach_input_"+str(i)+"_trial_"+str(this_t)+".txt", teach_sign[:,i])
 
+ 
     return X, Y, teach_sign, zh
 
 
@@ -291,8 +305,8 @@ def test(omegas=[0.5,0.0,1.0]):
 ################################################
 # TRAINING RESERVOIR
 ################################################
-num_gestures = 5 # Number of gestures
-ntrials      = 1 # Number of repetitions of each gesture
+num_gestures = 10 # Number of gestures
+ntrials      = 3 # Number of repetitions of each gesture
 X, Y, teach_sign, zh = train(num_gestures,ntrials)#train(num_gestures,ntrials)
 
 if produce_learning_plot:
@@ -304,7 +318,7 @@ if produce_learning_plot:
         subplot(1,6,i+1)
         title('training error')
         plot(timev,teach_sign[:,i],label='teach signal')
-        #plot(timev,zh["input"][:,i], label='input')
+        plot(timev,zh["input"][:,i], label='input')
         plot(timev,zh["output"][:,i], label='output')
     legend(loc='best')
 
@@ -315,7 +329,7 @@ if produce_learning_plot:
         a = i*2
         b = i*2+1 
         plot(teach_sign[:,a],teach_sign[:,b], label='target')
-        #plot(zh["input"][:,a],zh["input"][:,b], label='inputs')
+        plot(zh["input"][:,a],zh["input"][:,b], label='inputs')
         plot(zh["output"][:,a],zh["output"][:,b], label='outputs')
     
 ################################################
