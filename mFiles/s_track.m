@@ -21,10 +21,10 @@ ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 18; #Number of gestures [0:N-1] 
-Nt = 4; #Number of trials with tests per gesture [0:N-1]
-Ntrain = 16; #number of gestures used to train
-Ntest  = 1;  #number of tests
+Ng = 10; #Number of gestures [0:N-1] 
+Nt = 2; #Number of trials with tests per gesture [0:N-1]
+Ntrain = 9;  #number of gestures used to train
+Ntest  = 1;  #number of gestures used to test
 
 C_in = zeros (N);
 C    = zeros (N);
@@ -102,13 +102,14 @@ W(nz,:)         = W_tmp;
 #####################################
 # PLOT
 #####################################
-
-
 INerror = OUTerror = struct ("train",zeros(Ng,Nt,3),"test", zeros (Ng,Nt,3));
-# Train Error
+
+# TRAIN ERROR
+figure ()
+title("train error")
+counter = 1
 for g = 1:Ntrain;
-  figure (g)
-  for tt=1:Nt-Ntest;
+  for tt=1:Nt;
     load (fname(g-1,tt-1)); 
     zh_in = Xa * W_in(INdata.nid{g,tt},:);
     zh    = Ya * W(OUTdata.nid{g,tt},:);
@@ -117,35 +118,20 @@ for g = 1:Ntrain;
     INerror.train(g,tt,:)  = mean ((zz-zh_in).^2) ./ mean(zz.^2);
     OUTerror.train(g,tt,:) = mean ((zz-zh).^2) ./ mean(zz.^2);  
 
-    subplot(Nt,1,tt)
+    subplot(Ntrain,Nt,counter)
     plot(t,zh_in,'-r',t,zh,'-g',t,zz,'-k');
-    axis ([0 max(t) min(zz(:)) max(zz(:))]);
-
+    axis ([0 max(t) min(zz(:))-0.1 max(zz(:))+0.1]);
+    counter = counter +1;
   endfor #over trials 
 endfor #over gestures
+#print -dsvg figs/train_error.svg
+#saveas (1, "figs/train_error.png");
 
-for g = 1:Ntrain;
-  figure (g)
-  for tt=Nt-Ntest:Nt;
-    load (fname(g-1,tt-1)); 
-    zh_in = Xa * W_in(INdata.nid{g,tt},:);
-    zh    = Ya * W(OUTdata.nid{g,tt},:);
-    zz    = z(:,:,g,tt);%.*x_active(:,g);
-    
-    INerror.test(g,tt,:)  = mean ((zz-zh_in).^2) ./ mean(zz.^2);
-    OUTerror.test(g,tt,:) = mean ((zz-zh).^2) ./ mean(zz.^2);
-
-    subplot(Nt,1,tt)
-    plot(t,zh_in,'-or',t,zh,'-og',t,zz,'-k');
-    axis ([0 max(t) min(zz(:)) max(zz(:))]);
-
-  endfor #over trials 
-endfor #over gestures
-
-
-# Test Error
-for g=Ntrain+1:Ng;
-  figure(g)
+# TEST ERROR
+figure()
+title("test error")
+counter = 1
+for g=Ntrain+1:Ntrain+Ntest;
   for tt=1:Nt;
     load (fname(g-1,tt-1));
     zh_in = Xa * W_in(INdata.nid{g,tt},:);
@@ -155,9 +141,9 @@ for g=Ntrain+1:Ng;
     INerror.test(g,tt,:)  = mean ((zz-zh_in).^2) ./ mean(zz.^2);
     OUTerror.test(g,tt,:) = mean ((zz-zh).^2) ./ mean(zz.^2);  
 
-    subplot(Nt,1,tt)
-    plot(t,zh_in,'-or',t,zh,'-og',t,zz,'-k');
-    axis ([0 max(t) min(zz(:)) max(zz(:))]);
-
+    subplot(Ntest,Nt,counter)
+    plot(t,zh_in,'-r',t,zh,'-g',t,zz,'-k');
+    axis ([0 max(t) min(zh(:)) max(zh(:))]);
+    counter = counter +1;
   endfor #over trials 
 endfor #over gestures
