@@ -31,9 +31,6 @@ from pylab import *
 import pyNCS
 import sys
 import matplotlib
-sys.path.append('../api/reservoir/')
-sys.path.append('../api/retina/')
-sys.path.append('../gui/reservoir_display/')
 import reservoir as L
 import time
 import retina as ret
