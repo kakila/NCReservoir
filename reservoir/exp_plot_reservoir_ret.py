@@ -28,12 +28,10 @@ from __future__ import division
 
 import numpy as np
 from pylab import *
-import pyNCS
 import sys
 import matplotlib
 import reservoir as L
 import time
-import retina as ret
 import glob        #command line parser
 from mpl_toolkits.mplot3d import Axes3D
 
