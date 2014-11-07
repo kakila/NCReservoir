@@ -163,6 +163,33 @@ n_teach = len(index_teaching)
 teach_base = np.linspace(0,np.max(timev),len(timev)) # seconds
 base_freq = 2*np.pi/1e3; # Hz
 
+## Update readout weights
+for this_teach in range(len(index_teaching)):
+    outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
+    omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+
+    X = L.ts2sig(timev, membrane, \
+                 outputs[:,0], outputs[:,1], n_neu = 256)
+    
+    #build teaching signal
+    teach_sig = np.sum( \
+             np.sin(base_freq*omegas*teach_base[:,None]),\
+                axis=1)
+
+    if(this_teach == 0):
+        #Compute activity of reservoir base don first example
+        # FIXME
+        tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
+        tmp_ac = tmp_ac / np.max(tmp_ac)
+        ac = tmp_ac[:,None]
+
+    # Show teaching singal only if there is output
+    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+
+    print "train offline reservoir on teaching signal.. ",\
+           this_teach, " of ", n_teach
+    res.train(X,teach_sig=teach_sig)   
+
 n_subplots = np.ceil(np.sqrt(n_teach))
 fig2 = figure(2)
 ax2 = []
@@ -174,34 +201,32 @@ fig2.canvas.flush_events()
 
 rmse_teachings = []
 for this_teach in range(len(index_teaching)):
-    #inputs  = np.loadtxt(inputs_dat[index_teaching[this_teach]])
     outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
     omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
 
-    X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
-    #build teaching signal
-    teach_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
+    target_sig = np.sum( \
+             np.sin(base_freq*omegas*teach_base[:,None]),\
+                axis=1)
 
     if(this_teach == 0):
-        # As of now the reservoir can only give answers during activity
+        #Compute activity of reservoir base don first example
+        # FIXME
         tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
         tmp_ac = tmp_ac / np.max(tmp_ac)
         ac = tmp_ac[:,None]
 
-    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+    # Show teaching singal only if there is output
+    target_sig = target_sig[:,None] * ac**4 # Windowed by activity
 
-    print "train offline reservoir on teaching signal.. ", this_teach, " of ", n_teach
-    res.train(X,teach_sig=teach_sig)   
     zh = res.predict(X)
-    
-    this_rmse = res.root_mean_square(teach_sig, zh["output"], norm=True)
+    this_rmse = res.root_mean_square(target_sig, zh["output"],\
+                norm=True)
 
     print "### RMSE outputs", this_rmse
-
     rmse_teachings.append(this_rmse)
 
     ax2[this_teach].plot(timev,zh["output"])
-    ax2[this_teach].plot(timev,teach_sig)
+    ax2[this_teach].plot(timev,target_sig)
     fig2.canvas.draw()
     fig2.canvas.flush_events()
     
