@@ -168,7 +168,7 @@ class Reservoir:
 
         ** Outputs **
         '''
-        
+
         nR = len(rates) # Number of rates
 
         x,y = np.meshgrid(np.linspace(-1,1,nx), np.linspace(-1,1,ny))
@@ -496,7 +496,7 @@ class Reservoir:
         
         print "RC storage reseted!"
 
-    def train(self, X, Yt, teach_sig):
+    def train(self, X, Yt=None, teach_sig=None):
         '''
         Regression of teach_sig using inputs (Yt) and outputs (X)
         '''
@@ -506,31 +506,38 @@ class Reservoir:
         w            = (self.samples/nTtot, 1.0/nTtot)      
         # Covariance matrix
         Cx = np.dot (X.T, X) # output
-        C  = np.dot (Yt.T, Yt) # input
         # Projection of data
         Zx = np.dot (X.T, teach_sig) #output
-        Z  = np.dot (Yt.T, teach_sig) # input
         # Update cov matrix
         #raise Exception
         self.CovMatrix["output"]  = w[0]*self.CovMatrix["output"] + w[1]*Cx
-        self.CovMatrix["input"]  = w[0]*self.CovMatrix["input"] + w[1]*C
         self.ProjTeach["output"]  = w[0]*self.ProjTeach["output"] + w[1]*Zx
-        self.ProjTeach["input"]  = w[0]*self.ProjTeach["input"] + w[1]*Z
         # Update weights
-        self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
         self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
-        self.ReadoutW["input"]  = self._regressor["input"].coef_.T
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
+
+        if Yt:
+            C  = np.dot (Yt.T, Yt) # input
+            Z  = np.dot (Yt.T, teach_sig) # input
+            self.CovMatrix["input"]  = w[0]*self.CovMatrix["input"] + w[1]*C
+            self.ProjTeach["input"]  = w[0]*self.ProjTeach["input"] + w[1]*Z
+            # Update weights
+            self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
+            self.ReadoutW["input"]  = self._regressor["input"].coef_.T
+
         # Update samples
         self.samples = nTtot
 
-    def predict (self, X, Yt,  initNt=0):
+    def predict (self, X, Yt=None,  initNt=0):
         '''
         X -> outputs
         Yt -> inputs
         '''
-        Z = {"input":  self._regressor["input"].predict(Yt[initNt::,:]), \
-             "output": self._regressor["output"].predict(X[initNt::,:])}
+        
+        Z ={"output": self._regressor["output"].predict(X[initNt::,:])}
+        if Yt:
+            Z["input"] = self._regressor["input"].predict(Yt[initNt::,:])
+
         return Z
                            
     def create_stimuli_matrix (self, G, rates, nT, nx=16, ny=16) :

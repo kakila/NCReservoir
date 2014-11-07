@@ -149,12 +149,15 @@ index_testing = np.array(index_testing)
 res = L.Reservoir() #object without population does not need the chip offline build
 
 #membrane timev
-membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*35**2)))
-func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*35**2)) # Function to calculate region of activity
+dt_spk2sig = 35 # milliseconds
+dt_avg     = 1000 # milliseconds for averaging
+membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
+func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*dt_avg**2)) # Function to calculate region of activity
 
 #### TEACHING
 n_teach = len(index_teaching)
-teach_base = np.linspace(0,np.max(timev)/500.0,len(timev))
+teach_base = np.linspace(0,np.max(timev)/1e3,len(timev)) # seconds
+base_freq = 2*np.pi*2; # Hz
 figure()
 n_subplots = np.ceil(np.sqrt(n_teach))
 rmse_teachings = []
@@ -165,18 +168,10 @@ for this_teach in range(len(index_teaching)):
 
     print "train offline reservoir on teaching signal.. ", this_teach, " of ", n_teach
     X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
-    #Yt = L.ts2sig(timev, membrane, inputs[:,0], inputs[:,1], n_neu = 256)  
-            
     #build teaching signal
-    teach_sig = omegas[0]*np.sin(teach_base)+omegas[1]*np.sin(teach_base)+omegas[2]*np.sin(teach_base)
-    #inputs are "fake" just to speed up
-    Yt = omegas[0]*np.cos(teach_base)+omegas[1]*np.cos(teach_base)+omegas[2]*np.cos(teach_base) 
-    
-    Yt = np.repeat(Yt,256).reshape([len(timev),256])
-    #plot(teach_sign)
-    
+    teach_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
+
     if(this_trial == 0):
-        # Calculate activity of current inputs.
         # As of now the reservoir can only give answers during activity
         tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
         tmp_ac = tmp_ac / np.max(tmp_ac)
@@ -184,15 +179,13 @@ for this_teach in range(len(index_teaching)):
         teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
         print "teach_sign", np.shape(teach_sig)
         
-    res.train(X,Yt,teach_sig[:,None])   
-    zh = res.predict(X, Yt)
+    res.train(X,teach_sig=teach_sig[:,None])   
+    zh = res.predict(X)
    
     
     this_rmse = res.root_mean_square(teach_sig, zh["output"][:,0])
-    this_rmse_input = res.root_mean_square(teach_sig, zh["input"][:,0])
 
     print "### RMSE outputs", this_rmse
-    print "### RMSE inputs", this_rmse_input
 
     rmse_teachings.append(this_rmse)
 
@@ -216,7 +209,7 @@ for this_test in range(len(index_testing)):
     Yt = omegas[0]*np.cos(teach_base)+omegas[1]*np.cos(teach_base)+omegas[2]*np.cos(teach_base)
     Yt = np.repeat(Yt,256).reshape([len(timev),256])
     
-    zh = res.predict(X, Yt)     
+    zh = res.predict(X)     
     this_rmse = res.root_mean_square(target_sig, zh["output"][:,0])
     print "### RMSE outputs", this_rmse
     
