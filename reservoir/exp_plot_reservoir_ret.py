@@ -227,15 +227,15 @@ for this_test in range(len(index_testing)):
     X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
     
     # teach singal
-    teach_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
+    target_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
 
     tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
     tmp_ac = tmp_ac / np.max(tmp_ac)
     ac = tmp_ac[:,None]
-    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+    target_sig = target_sig[:,None] * ac**4 # Windowed by activity
     
     zh = res.predict(X)
-    this_rmse = res.root_mean_square(target_sig, zh["output"])
+    this_rmse = res.root_mean_square(target_sig, zh["output"], norm=True)
     print "### RMSE outputs", this_rmse
     
     rmse_testings.append(this_rmse)
