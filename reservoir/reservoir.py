@@ -745,7 +745,7 @@ def ts2sig (t, func, ts, n_id, n_neu = 256):
     n_id -> neuron id
     '''
     nT = len(t)
-    nid = np.unique(n_id)
+    nid = map(int,np.unique(n_id))
     nS = len(nid)
     Y = np.zeros([nT,n_neu])
     tot_exponent = []
