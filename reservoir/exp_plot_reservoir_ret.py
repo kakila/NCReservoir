@@ -228,7 +228,7 @@ for this_test in range(len(index_testing)):
     target_sig = omegas[0]*np.sin(teach_base)+omegas[1]*np.sin(teach_base)+omegas[2]*np.sin(teach_base)
     
     zh = res.predict(X)     
-    this_rmse = res.root_mean_square(target_sig, zh["output"][:,0])
+    this_rmse = res.root_mean_square(target_sig, zh["output"])
     print "### RMSE outputs", this_rmse
     
     rmse_testings.append(this_rmse)
