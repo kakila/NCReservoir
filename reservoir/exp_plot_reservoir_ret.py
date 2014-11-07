@@ -160,16 +160,17 @@ dt_avg     = 1000 # milliseconds for averaging
 membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
 func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*dt_avg**2)) # Function to calculate region of activity
 
+n_teach = len(index_teaching)
+teach_base = np.linspace(0,np.max(timev),len(timev)) # milliseconds
+base_freq = 2*np.pi/1e3; # Hz
+
 if flag["teach"]:
   print "#### TEACHING"
-  n_teach = len(index_teaching)
-  teach_base = np.linspace(0,np.max(timev),len(timev)) # milliseconds
-  base_freq = 2*np.pi/1e3; # Hz
 
   ## Update readout weights
   for this_teach in range(len(index_teaching)):
       outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
-      omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+      omegas  = np.loadtxt(omegas_dat[index_teaching[this_teach]])
 
       X = L.ts2sig(timev, membrane, \
                    outputs[:,0], outputs[:,1], n_neu = 256)
@@ -188,6 +189,7 @@ if flag["teach"]:
 
       # Show teaching singal only if there is output
       teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+      X         = X * ac**4
 
       print "train offline reservoir on teaching signal.. ",\
              this_teach, " of ", n_teach
@@ -224,6 +226,7 @@ for this_teach in range(len(index_teaching)):
 
     # Show teaching singal only if there is output
     target_sig = target_sig[:,None] * ac**4 # Windowed by activity
+    X         = X * ac**4
 
     zh = res.predict(X)
     this_rmse = res.root_mean_square(target_sig, zh["output"],\
@@ -265,9 +268,11 @@ for this_test in range(len(index_testing)):
     tmp_ac = tmp_ac / np.max(tmp_ac)
     ac = tmp_ac[:,None]
     target_sig = target_sig[:,None] * ac**4 # Windowed by activity
-    
+    X         = X * ac**4
+
     zh = res.predict(X)
-    this_rmse = res.root_mean_square(target_sig, zh["output"], norm=True)
+    this_rmse = res.root_mean_square(target_sig, zh["output"],\
+                                     norm=True)
     print "### RMSE outputs", this_rmse
     
     rmse_testings.append(this_rmse)

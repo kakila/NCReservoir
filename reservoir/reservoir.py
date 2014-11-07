@@ -510,19 +510,25 @@ class Reservoir:
         Zx = np.dot (X.T, teach_sig) #output
         # Update cov matrix
         #raise Exception
-        self.CovMatrix["output"]  = w[0]*self.CovMatrix["output"] + w[1]*Cx
-        self.ProjTeach["output"]  = w[0]*self.ProjTeach["output"] + w[1]*Zx
+        self.CovMatrix["output"]  = \
+                    w[0]*self.CovMatrix["output"] + w[1]*Cx
+        self.ProjTeach["output"]  = \
+                    w[0]*self.ProjTeach["output"] + w[1]*Zx
         # Update weights
-        self._regressor["output"].fit(self.CovMatrix["output"], self.ProjTeach["output"])
+        self._regressor["output"].fit(self.CovMatrix["output"],\
+                                      self.ProjTeach["output"])
         self.ReadoutW["output"] = self._regressor["output"].coef_.T
 
         if Yt:
             C  = np.dot (Yt.T, Yt) # input
             Z  = np.dot (Yt.T, teach_sig) # input
-            self.CovMatrix["input"]  = w[0]*self.CovMatrix["input"] + w[1]*C
-            self.ProjTeach["input"]  = w[0]*self.ProjTeach["input"] + w[1]*Z
+            self.CovMatrix["input"]  = \
+                    w[0]*self.CovMatrix["input"] + w[1]*C
+            self.ProjTeach["input"]  = \
+                    w[0]*self.ProjTeach["input"] + w[1]*Z
             # Update weights
-            self._regressor["input"].fit(self.CovMatrix["input"], self.ProjTeach["input"])
+            self._regressor["input"].fit(self.CovMatrix["input"],\
+                                         self.ProjTeach["input"])
             self.ReadoutW["input"]  = self._regressor["input"].coef_.T
 
         # Update samples
