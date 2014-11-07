@@ -225,9 +225,16 @@ for this_test in range(len(index_testing)):
     print "test offline reservoir on testing signal.. ", this_test, " of ", n_tests
     
     X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
-    target_sig = omegas[0]*np.sin(teach_base)+omegas[1]*np.sin(teach_base)+omegas[2]*np.sin(teach_base)
     
-    zh = res.predict(X)     
+    # teach singal
+    teach_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
+
+    tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
+    tmp_ac = tmp_ac / np.max(tmp_ac)
+    ac = tmp_ac[:,None]
+    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+    
+    zh = res.predict(X)
     this_rmse = res.root_mean_square(target_sig, zh["output"])
     print "### RMSE outputs", this_rmse
     
