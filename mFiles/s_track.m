@@ -32,7 +32,8 @@ C    = zeros (N);
 Z_in = zeros (N,1);
 Z    = zeros (N,1);
 
-folder = "../data/lsm_ret/";
+#folder = "../data/lsm_ret";
+folder = "../../chip_MN256R01/data/tracking_18gestures_4trials";
 
 fname = @(p,t) fullfile (folder, ...
                          sprintf ("gesture_%d_trial_%d.dat",p,t));
@@ -136,7 +137,7 @@ for g = 1:Ntrain;
     OUTerror.test(g,tt,:) = mean ((zz-zh).^2) ./ mean(zz.^2);
 
     subplot(Nt,1,tt)
-    plot(t,zh_in,'-or',t,zh,'-og',t,zz,'-k');
+    plot(t,zh_in,'.r',t,zh,'.g',t,zz,'-k');
     axis ([0 max(t) min(zz(:)) max(zz(:))]);
 
   endfor #over trials 

@@ -19,7 +19,9 @@
 # and make easier processing.
 pkg load parallel general
 
-folder = "../data/lsm_ret";
+#folder = "../data/lsm_ret";
+folder = "../../chip_MN256R01/data/tracking_18gestures_4trials";
+
 ## Number of neurons in each direction
 ny = nx = 16;
 N  = nx*ny;
