@@ -27,8 +27,8 @@ ny = nx = 16;
 N  = nx*ny;
 
 # Find maximum and minimum values of the whole data set.
-Ng = 25; #Number of gestures [0:N-1] 
-Nt = 4; #Number of trials  [0:N-1]
+Ng = 10; #Number of gestures [0:N-1] 
+Nt = 3; #Number of trials  [0:N-1]
 if exist("redo")
   OUTdata = INdata  = struct ("Tmax",0, ...          # Maximum value of time vector
                               "Nid" ,[1e4 -1], ...   # Min max neuron id
