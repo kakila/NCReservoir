@@ -34,6 +34,7 @@ import reservoir as L
 import time
 import glob        #command line parser
 from mpl_toolkits.mplot3d import Axes3D
+from scipy.io import savemat, loadmat
 
 
 ion()
@@ -43,8 +44,7 @@ directory = 'lsm_ret/'
 fig_dir = 'figures/'            #make sure they exists
 extension = "txt"
 
-flag={"teach":True}
-
+flag = {"reload": True}
 plot_omega_grid = True
 
 
@@ -140,7 +140,9 @@ wx = np.array(wx)
 wy = np.array(wy)
 wz = np.array(wz)
 index_teaching = np.array(index_teaching)
-index_testing = np.array(index_testing)
+index_testing  = np.array(index_testing)
+n_teach        = len(index_teaching)
+n_test         = len(index_testing)
 
 #order wx as ... just to check
 #fig = figure()
@@ -151,137 +153,167 @@ index_testing = np.array(index_testing)
 #    ax.scatter(wx[index_testing[i]],wy[index_testing[i]],wz[index_testing[i]],c='g',marker='o') 
 
 ####################
-#init reservoir
-res = L.Reservoir() #object without population does not need the chip offline build
+# Parameters for converting spikes to analog signals
+dt_spk2sig = 15 # milliseconds
+membrane   = lambda t,ts: \
+             np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
+# membrane converts output spikes to analog singals
 
-#membrane timev
-dt_spk2sig = 35 # milliseconds
-dt_avg     = 1000 # milliseconds for averaging
-membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
-func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*dt_avg**2)) # Function to calculate region of activity
+if flag["reload"]:
 
-n_teach = len(index_teaching)
-teach_base = np.linspace(0,np.max(timev),len(timev)) # milliseconds
-base_freq = 2*np.pi/1e3; # Hz
+    # Time vector for ALL analog signals
+    T  = np.max(timev)
+    nT = np.round(2 * T / dt_spk2sig)
 
-if flag["teach"]:
-  print "#### TEACHING"
+    t_analog = np.linspace(0,T,nT) # milliseconds
 
-  ## Update readout weights
-  for this_teach in range(len(index_teaching)):
-      outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
-      omegas  = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+    print "### PRE-LOADING TRAINING DATA"
+    # Pre-load training data
+    X_train = []
+    W_train = []
+    for i in xrange(n_teach):
+        outputs = np.loadtxt(outputs_dat[index_teaching[i]])
+        omegas  = np.loadtxt(omegas_dat[index_teaching[i]])
+        X = L.ts2sig(t_analog, membrane, \
+                     outputs[:,0], outputs[:,1], n_neu = 256)
+        X_train.append(X)
+        W_train.append(omegas)
 
-      X = L.ts2sig(timev, membrane, \
-                   outputs[:,0], outputs[:,1], n_neu = 256)
-      
-      #build teaching signal
-      teach_sig = np.sum( \
-               np.sin(base_freq*omegas*teach_base[:,None]),\
-                  axis=1)
+    W_train = np.array (W_train)
 
-      if(this_teach == 0):
-          #Compute activity of reservoir base don first example
-          # FIXME
-          tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
-          tmp_ac = tmp_ac / np.max(tmp_ac)
-          ac = tmp_ac[:,None]
+    print "### PRE-LOADING TEST DATA"
+    # Pre-load training data
+    X_test = []
+    W_test = []
+    for i in xrange(n_test):
+        outputs = np.loadtxt(outputs_dat[index_testing[i]])
+        omegas  = np.loadtxt(omegas_dat[index_testing[i]])
+        X = L.ts2sig(t_analog, membrane, \
+                     outputs[:,0], outputs[:,1], n_neu = 256)
 
-      # Show teaching singal only if there is output
-      teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
-      X         = X * ac**4
+        X_test.append(X)
+        W_test.append(omegas)
 
-      print "train offline reservoir on teaching signal.. ",\
-             this_teach, " of ", n_teach
-      res.train(X,teach_sig=teach_sig)   
+    W_test = np.array (W_test)
+
+
+    print "### CUTING DATA"
+    activation = np.array (map(lambda x: np.mean(x**2,axis=1),X_train)).T
+    activation = np.where(activation**8 > 1)[0]
+
+    idx        = [activation.min(), activation.max()+1]
+    idx_spk    = [0,0]
+    idx_spk[0] = np.argmin (np.abs(t_analog[idx[0]]-timev))
+    idx_spk[1] = np.argmin (np.abs(t_analog[idx[1]]-timev))
+    
+    # Store analog signals
+    X_train = np.array(map(lambda x: x[idx[0]:idx[1],:],X_train))
+    X_train = np.transpose (X_train, axes=[1,2,0])
+
+    X_test = np.array(map(lambda x: x[idx[0]:idx[1],:],X_test))
+    X_test = np.transpose (X_test, axes=[1,2,0])
+
+    nT = idx[1]-idx[0]
+    T  = t_analog[idx[1]]-t_analog[idx[0]]
+
+    t_analog = np.linspace(0,T,nT)[:,None] # milliseconds
+
+    savemat ("cut_data.mat",{"X_train":X_train,\
+                             "X_test":X_test,\
+                             "t_analog":t_analog,\
+                             "idx":idx,\
+                             "idx_spk":idx_spk,\
+                             "W_train":W_train,\
+                             "W_test":W_test})
+else:
+    tmp = loadmat ("cut_data.mat")
+    X_train  = tmp["X_train"]
+    W_train  = tmp["W_train"]
+    X_test  = tmp["X_test"]
+    W_test  = tmp["W_test"]
+    t_analog = tmp["t_analog"]
+    idx      = tmp["idx"][0]
+    del tmp
+    
+
+## Reservoir
+res = L.Reservoir()
+
+
+# Frequency scaling of teaching signal
+base_freq = 2*np.pi/1e3; # MHz
+delt_freq = base_freq*0.1; # MHz
+# Teaching signal
+T_sig = lambda t,w: np.mean( \
+             np.sin((base_freq+delt_freq*w)*t),\
+                axis=1)[:,None]
+
+print "#### TEACHING"
+## Update readout weights
+for i in xrange(n_teach):
+    #build teaching signal
+    print "Offline training on data point ",\
+             i, " of ", n_teach
+    res.train(X_train[:,:,i], \
+              teach_sig=T_sig(t_analog,W_train[i,:]))
 
 print "#### EVALUATING TEACHING"
+fig2       = figure(2)
+
 n_subplots = np.ceil(np.sqrt(n_teach))
-fig2 = figure(2)
 ax2 = []
-for i in xrange(len(index_teaching)):
+for i in xrange(n_teach):
     ax2.append(fig2.add_subplot(n_subplots,n_subplots,i+1))
     ax2[i].axis('off')
 fig2.canvas.draw()
 fig2.canvas.flush_events()
 
 rmse_teachings = []
-for this_teach in range(len(index_teaching)):
-    outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
-    omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+for i in xrange(n_teach):
+    zh   = res.predict(X_train[:,:,i])
+    targ = T_sig(t_analog,W_train[i,:])
+    rmse = res.root_mean_square(targ, \
+                                zh["output"], norm=True)
 
-    X = L.ts2sig(timev, membrane, \
-                 outputs[:,0], outputs[:,1], n_neu = 256)
+    print "### RMSE training",i,": ", rmse
+    rmse_teachings.append(rmse)
 
-    target_sig = np.sum( \
-             np.sin(base_freq*omegas*teach_base[:,None]),\
-                axis=1)
-
-    if(this_teach == 0):
-        #Compute activity of reservoir base don first example
-        # FIXME
-        tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
-        tmp_ac = tmp_ac / np.max(tmp_ac)
-        ac = tmp_ac[:,None]
-
-    # Show teaching singal only if there is output
-    target_sig = target_sig[:,None] * ac**4 # Windowed by activity
-    X         = X * ac**4
-
-    zh = res.predict(X)
-    this_rmse = res.root_mean_square(target_sig, zh["output"],\
-                norm=True)
-
-    print "### RMSE outputs", this_rmse
-    rmse_teachings.append(this_rmse)
-
-    ax2[this_teach].plot(timev,zh["output"])
-    ax2[this_teach].plot(timev,target_sig)
+    ax2[i].plot(t_analog,zh["output"])
+    ax2[i].plot(t_analog,targ)
     fig2.canvas.draw()
     fig2.canvas.flush_events()
-    
-print "#### TESTING"
-n_tests = len(index_testing)
-rmse_testings = []
-n_subplots = np.ceil(np.sqrt(n_tests))
 
+print "#### TESTING"
 fig3 = figure(3)
+
+n_subplots = np.ceil(np.sqrt(n_test))
 ax3 = []
-for i in xrange(len(index_testing)):
+for i in xrange(n_test):
     ax3.append(fig3.add_subplot(n_subplots,n_subplots,i+1))
     ax3[i].axis('off')
 fig3.canvas.draw()
 fig3.canvas.flush_events()
 
-for this_test in range(len(index_testing)):
-    outputs = np.loadtxt(outputs_dat[index_testing[this_test]])
-    omegas = np.loadtxt(omegas_dat[index_testing[this_test]])
+rmse_testings = []
+for i in range(n_test):
+    print "Offline training on data point ",\
+             i, " of ", n_test
 
-    print "test offline reservoir on testing signal.. ", this_test, " of ", n_tests
-    
-    X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
-    
-    # teach singal
-    target_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
+    zh   = res.predict(X_test[:,:,i])
+    targ = T_sig(t_analog,W_test[i,:])
+    rmse = res.root_mean_square(targ, \
+                                zh["output"], norm=True)
 
-#    tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
-#    tmp_ac = tmp_ac / np.max(tmp_ac)
-#    ac = tmp_ac[:,None]
-    target_sig = target_sig[:,None] * ac**4 # Windowed by activity
-    X         = X * ac**4
+    print "### RMSE test",i,": ", rmse
 
-    zh = res.predict(X)
-    this_rmse = res.root_mean_square(target_sig, zh["output"],\
-                                     norm=True)
-    print "### RMSE outputs", this_rmse
-    
-    rmse_testings.append(this_rmse)
- 
-    ax3[this_test].plot(timev,zh["output"])
-    ax3[this_test].plot(timev,teach_sig)
+    rmse_testings.append(rmse)
+
+    ax3[i].plot(t_analog,zh["output"])
+    ax3[i].plot(t_analog,targ)
     fig3.canvas.draw()
     fig3.canvas.flush_events()
-    
+
+
 #order wx as ... just to check cmap=plt.cm.get_cmap('jet'),
 fig = figure(4)
 ax = Axes3D(fig)
