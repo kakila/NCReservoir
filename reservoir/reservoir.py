@@ -617,13 +617,16 @@ class Reservoir:
             teach_sig += rates[this_component]((teach_scale*timev[:,None])*1e-3)*rate_w          
         return teach_sig
         
-    def root_mean_square(self, ideal, measured):
+    def root_mean_square(self, ideal, measured, norm=False):
         ''' calculate RMSE 
         ie: root_mean_square(ideal,measured)
         numpy vector in 
         float out'''
         import numpy as np
-        return np.sqrt(((ideal - measured) ** 2).mean())
+        ret = np.sqrt(((ideal - measured) ** 2).mean())
+        if norm:
+          ret = ret / np.sqrt((ideal ** 2).mean())
+        return ret
 
     ### HELPER FUNCTIONS
     def _realtime_learn (self, x, y, teach_sig):

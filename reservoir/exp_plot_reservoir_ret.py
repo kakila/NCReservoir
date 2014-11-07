@@ -35,7 +35,9 @@ import time
 import glob        #command line parser
 from mpl_toolkits.mplot3d import Axes3D
 
+
 ion()
+close('all')
 
 directory = 'lsm_ret/'
 fig_dir = 'figures/'            #make sure they exists
@@ -102,14 +104,16 @@ phi = np.loadtxt(directory+"phi.txt")
 wX = (np.sin(P)*np.cos(T)).ravel() 
 wY = (np.sin(P)*np.sin(T)).ravel() 
 wZ = np.cos(P).ravel()
-fig = figure()
-ax = Axes3D(fig)
+
+fig1 = figure(1)
+ax = Axes3D(fig1)
 for i in range(len(wX)):
     if(i%2):
         ax.scatter(wX[i],wY[i],wZ[i],c='r',marker='^')
     else:
         ax.scatter(wX[i],wY[i],wZ[i],c='b',marker='o')
 title('teaching on triangles and training on dots')    
+fig1.canvas.flush_events()
 
 #this will be the teachings
 wx_teaching = wX[::2]
@@ -154,50 +158,66 @@ dt_avg     = 1000 # milliseconds for averaging
 membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
 func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*dt_avg**2)) # Function to calculate region of activity
 
-#### TEACHING
+print "#### TEACHING"
 n_teach = len(index_teaching)
-teach_base = np.linspace(0,np.max(timev)/1e3,len(timev)) # seconds
-base_freq = 2*np.pi*2; # Hz
-figure()
+teach_base = np.linspace(0,np.max(timev),len(timev)) # seconds
+base_freq = 2*np.pi/1e3; # Hz
+
 n_subplots = np.ceil(np.sqrt(n_teach))
+fig2 = figure(2)
+ax2 = []
+for i in xrange(len(index_teaching)):
+    ax2.append(fig2.add_subplot(n_subplots,n_subplots,i+1))
+    ax2[i].axis('off')
+fig2.canvas.draw()
+fig2.canvas.flush_events()
+
 rmse_teachings = []
 for this_teach in range(len(index_teaching)):
     #inputs  = np.loadtxt(inputs_dat[index_teaching[this_teach]])
     outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
     omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
 
-    print "train offline reservoir on teaching signal.. ", this_teach, " of ", n_teach
     X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
     #build teaching signal
     teach_sig = np.sum(np.sin(base_freq*omegas*teach_base[:,None]),axis=1)
 
-    if(this_trial == 0):
+    if(this_teach == 0):
         # As of now the reservoir can only give answers during activity
         tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
         tmp_ac = tmp_ac / np.max(tmp_ac)
         ac = tmp_ac[:,None]
-        teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
-        print "teach_sign", np.shape(teach_sig)
-        
-    res.train(X,teach_sig=teach_sig[:,None])   
+
+    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+
+    print "train offline reservoir on teaching signal.. ", this_teach, " of ", n_teach
+    res.train(X,teach_sig=teach_sig)   
     zh = res.predict(X)
-   
     
-    this_rmse = res.root_mean_square(teach_sig, zh["output"][:,0])
+    this_rmse = res.root_mean_square(teach_sig, zh["output"], norm=True)
 
     print "### RMSE outputs", this_rmse
 
     rmse_teachings.append(this_rmse)
 
-    subplot(n_subplots,n_subplots,this_teach)
-    plot(timev,zh["output"])
-    plot(timev,teach_sig)
-    axis('off')
-
-#### TESTING
+    ax2[this_teach].plot(timev,zh["output"])
+    ax2[this_teach].plot(timev,teach_sig)
+    fig2.canvas.draw()
+    fig2.canvas.flush_events()
+    
+print "#### TESTING"
 n_tests = len(index_testing)
 rmse_testings = []
 n_subplots = np.ceil(np.sqrt(n_tests))
+
+fig3 = figure(3)
+ax3 = []
+for i in xrange(len(index_testing)):
+    ax3.append(fig3.add_subplot(n_subplots,n_subplots,i+1))
+    ax3[i].axis('off')
+fig3.canvas.draw()
+fig3.canvas.flush_events()
+
 for this_test in range(len(index_testing)):
     outputs = np.loadtxt(outputs_dat[index_testing[this_test]])
     omegas = np.loadtxt(omegas_dat[index_testing[this_test]])
@@ -213,13 +233,13 @@ for this_test in range(len(index_testing)):
     
     rmse_testings.append(this_rmse)
  
-    subplot(n_subplots,n_subplots,this_test)
-    plot(timev,zh["output"])
-    plot(timev,target_sig)
-    axis('off')
+    ax3[this_test].plot(timev,zh["output"])
+    ax3[this_test].plot(timev,teach_sig)
+    fig3.canvas.draw()
+    fig3.canvas.flush_events()
     
 #order wx as ... just to check cmap=plt.cm.get_cmap('jet'),
-fig = figure()
+fig = figure(4)
 ax = Axes3D(fig)
 color_teachings = (rmse_teachings/np.max(rmse_teachings))*30
 color_testings = (rmse_testings/np.max(rmse_testings))*30
@@ -231,5 +251,3 @@ scatter2_proxy = matplotlib.lines.Line2D([0],[0], linestyle="none", c='g', marke
 
 ax.legend([scatter1_proxy, scatter2_proxy], ['teaching', 'testing'], numpoints = 1)
 
-    
-    
