@@ -43,6 +43,8 @@ directory = 'lsm_ret/'
 fig_dir = 'figures/'            #make sure they exists
 extension = "txt"
 
+flag={"teach":True}
+
 plot_omega_grid = True
 
 
@@ -158,38 +160,40 @@ dt_avg     = 1000 # milliseconds for averaging
 membrane = lambda t,ts: np.atleast_2d(np.exp((-(t-ts)**2)/(2*dt_spk2sig**2)))
 func_avg = lambda t,ts: np.exp((-(t-ts)**2)/(2*dt_avg**2)) # Function to calculate region of activity
 
-print "#### TEACHING"
-n_teach = len(index_teaching)
-teach_base = np.linspace(0,np.max(timev),len(timev)) # seconds
-base_freq = 2*np.pi/1e3; # Hz
+if flag["teach"]:
+  print "#### TEACHING"
+  n_teach = len(index_teaching)
+  teach_base = np.linspace(0,np.max(timev),len(timev)) # milliseconds
+  base_freq = 2*np.pi/1e3; # Hz
 
-## Update readout weights
-for this_teach in range(len(index_teaching)):
-    outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
-    omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+  ## Update readout weights
+  for this_teach in range(len(index_teaching)):
+      outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
+      omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
 
-    X = L.ts2sig(timev, membrane, \
-                 outputs[:,0], outputs[:,1], n_neu = 256)
-    
-    #build teaching signal
-    teach_sig = np.sum( \
-             np.sin(base_freq*omegas*teach_base[:,None]),\
-                axis=1)
+      X = L.ts2sig(timev, membrane, \
+                   outputs[:,0], outputs[:,1], n_neu = 256)
+      
+      #build teaching signal
+      teach_sig = np.sum( \
+               np.sin(base_freq*omegas*teach_base[:,None]),\
+                  axis=1)
 
-    if(this_teach == 0):
-        #Compute activity of reservoir base don first example
-        # FIXME
-        tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
-        tmp_ac = tmp_ac / np.max(tmp_ac)
-        ac = tmp_ac[:,None]
+      if(this_teach == 0):
+          #Compute activity of reservoir base don first example
+          # FIXME
+          tmp_ac = np.mean(func_avg(timev[:,None], outputs[:,0][None,:]), axis=1) 
+          tmp_ac = tmp_ac / np.max(tmp_ac)
+          ac = tmp_ac[:,None]
 
-    # Show teaching singal only if there is output
-    teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
+      # Show teaching singal only if there is output
+      teach_sig = teach_sig[:,None] * ac**4 # Windowed by activity
 
-    print "train offline reservoir on teaching signal.. ",\
-           this_teach, " of ", n_teach
-    res.train(X,teach_sig=teach_sig)   
+      print "train offline reservoir on teaching signal.. ",\
+             this_teach, " of ", n_teach
+      res.train(X,teach_sig=teach_sig)   
 
+print "#### EVALUATING TEACHING"
 n_subplots = np.ceil(np.sqrt(n_teach))
 fig2 = figure(2)
 ax2 = []
@@ -203,6 +207,9 @@ rmse_teachings = []
 for this_teach in range(len(index_teaching)):
     outputs = np.loadtxt(outputs_dat[index_teaching[this_teach]])
     omegas = np.loadtxt(omegas_dat[index_teaching[this_teach]])
+
+    X = L.ts2sig(timev, membrane, \
+                 outputs[:,0], outputs[:,1], n_neu = 256)
 
     target_sig = np.sum( \
              np.sin(base_freq*omegas*teach_base[:,None]),\
