@@ -206,8 +206,6 @@ for this_test in range(len(index_testing)):
     
     X = L.ts2sig(timev, membrane, outputs[:,0], outputs[:,1], n_neu = 256)
     target_sig = omegas[0]*np.sin(teach_base)+omegas[1]*np.sin(teach_base)+omegas[2]*np.sin(teach_base)
-    Yt = omegas[0]*np.cos(teach_base)+omegas[1]*np.cos(teach_base)+omegas[2]*np.cos(teach_base)
-    Yt = np.repeat(Yt,256).reshape([len(timev),256])
     
     zh = res.predict(X)     
     this_rmse = res.root_mean_square(target_sig, zh["output"][:,0])
